@@ -1,0 +1,5 @@
+notify.conf
+*.log
+*.done
+*.meta
+*.lock

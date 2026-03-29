@@ -1,0 +1,17 @@
+# Claude Code Hook Notification Configuration
+# Copy this file to notify.conf and fill in your values:
+#   cp notify.conf.example notify.conf
+#   chmod 600 notify.conf
+#
+# IMPORTANT: Claude Code hook subprocesses do NOT inherit ~/.zshrc or
+# ~/.bash_profile environment variables. This file is the only way to
+# pass configuration to hook scripts.
+
+# Your notification target (Feishu open_id, Telegram chat_id, etc.)
+CC_NOTIFY_TARGET="YOUR_TARGET_ID"
+
+# Seconds to wait before sending a "still waiting" notification
+CC_WAIT_NOTIFY_SECONDS=30
+
+# Notification channel (feishu, telegram, slack, discord, etc.)
+CC_NOTIFY_CHANNEL="feishu"
