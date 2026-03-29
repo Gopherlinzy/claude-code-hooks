@@ -104,8 +104,9 @@ env -i PATH="${PATH}" \
     --connect-timeout 3 \
     || true
 
-# === 信号通道 2：飞书推送给指挥官 ===
-FEISHU_TARGET="YOUR_FEISHU_TARGET_ID"
+# === 信号通道 2：推送通知（通过通用通知层）===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/send-notification.sh"
 NOTIFY_MSG="🤖 Claude Code 任务完成！
 📋 任务: ${TASK_NAME}
 🆔 Session: ${TASK_ID_SHORT}
@@ -113,11 +114,7 @@ NOTIFY_MSG="🤖 Claude Code 任务完成！
 ⏰ 时间: ${TIMESTAMP}
 📦 结果文件: ${DONE_FILE}"
 
-openclaw message send \
-    --channel feishu \
-    --target "${FEISHU_TARGET}" \
-    -m "${NOTIFY_MSG}" \
-    2>/dev/null || true
+send_notify "${NOTIFY_MSG}"
 
 # 始终以 0 退出，不影响 Claude Code 主进程
 exit 0

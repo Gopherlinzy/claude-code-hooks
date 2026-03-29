@@ -85,15 +85,29 @@ Claude Code 会话
 
 ## 通知后端
 
-默认使用 `openclaw message send`。可替换为 Slack Webhook、Telegram Bot API、Discord Webhook、邮件等任何通知方式。
+所有 Hook 使用**通用通知分发器**（`send-notification.sh`），内置支持 7 种后端，**无需安装 OpenClaw**：
+
+| 后端 | 配置变量 | 说明 |
+|------|---------|------|
+| Auto | `CC_NOTIFY_BACKEND=auto` | 自动检测第一个可用后端 |
+| OpenClaw | `CC_NOTIFY_TARGET` | 飞书 / Telegram / 任意 OpenClaw 渠道 |
+| Slack | `CC_SLACK_WEBHOOK_URL` | Slack Incoming Webhook |
+| Telegram | `CC_TELEGRAM_BOT_TOKEN` | Telegram Bot API |
+| Discord | `CC_DISCORD_WEBHOOK_URL` | Discord Webhook |
+| Bark | `CC_BARK_URL` | iOS 推送 ([Bark](https://github.com/Finb/Bark)) |
+| Webhook | `CC_WEBHOOK_URL` | 任意 HTTP 端点（可自定义方法/请求体） |
+| Command | `CC_NOTIFY_COMMAND` | 任意命令行工具 |
+
+默认 `auto` 模式自动检测。详见 `scripts/notify.conf.example`。
 
 ## 依赖
 
 - `bash` 4+
 - `jq`（JSON 解析，缺失时优雅降级）
-- `python3`（`dispatch-claude.sh` 的 JSON 编码）
-- `openclaw` CLI（通知发送，可替换）
+- `python3`（JSON 编码 + 通知后端）
+- `curl`（Slack/Telegram/Discord/Bark/Webhook 通知）
 - Claude Code CLI (`claude`)
+- `openclaw` CLI（可选 — 仅使用 openclaw 通知后端时需要）
 
 ## 许可证
 

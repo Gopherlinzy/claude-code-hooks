@@ -126,12 +126,10 @@ EOF
 
 👉 请回到终端完成操作（允许/拒绝/输入）"
 
-    # 发送通知
-    openclaw message send \
-        --channel "${NOTIFY_CHANNEL}" \
-        --target "${NOTIFY_TARGET}" \
-        -m "${NOTIFY_MSG}" \
-        2>/dev/null || true
+    # 发送通知（通过通用通知层）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "${SCRIPT_DIR}/send-notification.sh"
+    send_notify "${NOTIFY_MSG}"
 
     # 清理标记和详情文件
     rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true

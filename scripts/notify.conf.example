@@ -7,11 +7,42 @@
 # ~/.bash_profile environment variables. This file is the only way to
 # pass configuration to hook scripts.
 
-# Your notification target (Feishu open_id, Telegram chat_id, etc.)
-CC_NOTIFY_TARGET="YOUR_TARGET_ID"
+# ============================================================
+# Notification Backend (choose ONE)
+# ============================================================
+# Options: auto | openclaw | slack | telegram | discord | bark | webhook | command
+# "auto" will detect the first available backend in the order listed above.
+CC_NOTIFY_BACKEND="auto"
 
-# Seconds to wait before sending a "still waiting" notification
+# === OpenClaw (if you have OpenClaw installed) ===
+# CC_NOTIFY_CHANNEL="feishu"
+# CC_NOTIFY_TARGET="YOUR_FEISHU_OPEN_ID"
+
+# === Slack ===
+# CC_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+
+# === Telegram ===
+# CC_TELEGRAM_BOT_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+# CC_TELEGRAM_CHAT_ID="123456789"
+
+# === Discord ===
+# CC_DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1234567890/abcdefg"
+
+# === Bark (iOS push notifications) ===
+# CC_BARK_URL="https://api.day.app/YOUR_BARK_KEY"
+# CC_BARK_TITLE="Claude Code"
+
+# === Generic Webhook ===
+# CC_WEBHOOK_URL="https://your-server.com/hook"
+# CC_WEBHOOK_METHOD="POST"
+# CC_WEBHOOK_CONTENT_TYPE="application/json"
+# CC_WEBHOOK_BODY_TEMPLATE='{"text": "__MESSAGE__"}'
+
+# === Custom Command (any executable) ===
+# Message is passed as $1 and also piped via stdin
+# CC_NOTIFY_COMMAND="my-notify-tool --message"
+
+# ============================================================
+# Wait-timeout settings
+# ============================================================
 CC_WAIT_NOTIFY_SECONDS=30
-
-# Notification channel (feishu, telegram, slack, discord, etc.)
-CC_NOTIFY_CHANNEL="feishu"

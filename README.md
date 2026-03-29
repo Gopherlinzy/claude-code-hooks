@@ -246,14 +246,37 @@ Claude Code Session
 
 ## Notification Backend
 
-These hooks use `openclaw message send` for notifications. To use a different backend, modify the notification commands in `notify-openclaw.sh` and `wait-notify.sh`.
+All hooks use a **universal notification dispatcher** (`send-notification.sh`) that supports 7 backends out of the box. **No OpenClaw required** — pick whichever you already use:
 
-**Alternatives:**
-- Slack: Replace with `curl` to Slack webhook
-- Telegram: Replace with Telegram Bot API call
-- Discord: Replace with Discord webhook
-- Email: Replace with `sendmail` or similar
-- Custom: Any command that accepts a message string
+| Backend | Config Variable | Example |
+|---------|----------------|---------|
+| **Auto** | `CC_NOTIFY_BACKEND=auto` | Detects first available backend |
+| **OpenClaw** | `CC_NOTIFY_TARGET` | Feishu / Telegram / any OpenClaw channel |
+| **Slack** | `CC_SLACK_WEBHOOK_URL` | Slack Incoming Webhook |
+| **Telegram** | `CC_TELEGRAM_BOT_TOKEN` + `CC_TELEGRAM_CHAT_ID` | Telegram Bot API |
+| **Discord** | `CC_DISCORD_WEBHOOK_URL` | Discord Webhook |
+| **Bark** | `CC_BARK_URL` | iOS push via [Bark](https://github.com/Finb/Bark) |
+| **Webhook** | `CC_WEBHOOK_URL` | Any HTTP endpoint (customizable method/body) |
+| **Command** | `CC_NOTIFY_COMMAND` | Any CLI tool (message via $1 + stdin) |
+
+Set `CC_NOTIFY_BACKEND=auto` (default) and the dispatcher auto-detects the first configured backend.
+
+Example for Slack:
+```bash
+# notify.conf
+CC_NOTIFY_BACKEND="slack"
+CC_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+```
+
+Example for Telegram:
+```bash
+# notify.conf
+CC_NOTIFY_BACKEND="telegram"
+CC_TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+CC_TELEGRAM_CHAT_ID="987654321"
+```
+
+See `scripts/notify.conf.example` for all options.
 
 ## Comparison with Claude Code `--channels`
 
@@ -277,9 +300,10 @@ Claude Code 2.1.80+ includes a `--channels` feature (research preview) that allo
 
 - `bash` 4+
 - `jq` (for JSON parsing; gracefully degrades if missing)
-- `python3` (for `dispatch-claude.sh` JSON encoding)
-- `openclaw` CLI (for notifications; replaceable)
+- `python3` (for JSON encoding in `dispatch-claude.sh` and notification backends)
+- `curl` (for Slack/Telegram/Discord/Bark/webhook notifications)
 - Claude Code CLI (`claude`)
+- `openclaw` CLI (optional — only needed if using `openclaw` notification backend)
 
 ## License
 
