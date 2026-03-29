@@ -220,6 +220,7 @@ New hooks are loaded when a new `claude` session starts. Existing sessions won't
 | `CC_NOTIFY_TARGET` | Notification target (Feishu open_id, chat_id, etc.) | _(required)_ |
 | `CC_WAIT_NOTIFY_SECONDS` | Seconds before sending wait-timeout alert | `30` |
 | `CC_NOTIFY_CHANNEL` | Notification channel (`feishu`, `telegram`, etc.) | `feishu` |
+| `CC_GATEWAY_PORT` | OpenClaw gateway port (skip wake call if unset) | _(unset)_ |
 
 ### Environment Variables
 
@@ -295,6 +296,34 @@ Claude Code 2.1.80+ includes a `--channels` feature (research preview) that allo
 | **Dependencies** | MCP server + claude.ai account | bash + jq only |
 
 **TL;DR:** No conflict. `--channels` solves "approve from phone". These hooks are a full task lifecycle toolkit. They can run side by side.
+
+## Phase 1 Hardening (v1.1)
+
+All hooks have been hardened with the following improvements:
+
+### Explicit Fail-Open
+Every hook declares `# FAIL_MODE=open` — if a hook itself crashes, it silently passes through instead of blocking Claude Code. No more silent failures swallowed by `|| true` with zero record.
+
+### JSONL Structured Audit Log
+All hooks now write structured audit events to `~/.openclaw/logs/hooks-audit.jsonl`:
+```json
+{"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
+```
+Uses `jq -nc` when available, falls back to `printf` formatting. The `_log_jsonl()` function is itself fail-safe (`2>/dev/null || true`).
+
+### Externalized Safety Rules
+`cc-safety-gate.sh` now supports loading custom rules from `safety-rules.conf`:
+```bash
+cp scripts/safety-rules.conf.example scripts/safety-rules.conf
+# Edit to add/remove blacklist patterns and protected paths
+```
+Built-in defaults are **always preserved** — external config only overrides, never replaces. If the config file is missing or unreadable, the built-in rules remain active.
+
+### Dynamic Gateway Port
+`notify-openclaw.sh` no longer has a hardcoded gateway port. Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is skipped entirely.
+
+### Async Dispatch Quote Fix
+`dispatch-claude.sh` now writes prompts to a `mktemp` temporary file instead of embedding them in `nohup bash -c '...'`, eliminating quote-escaping bugs. Temporary files are cleaned up via `trap EXIT`.
 
 ## Dependencies
 

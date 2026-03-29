@@ -64,6 +64,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
 | `CC_NOTIFY_TARGET` | 通知目标（飞书 open_id / chat_id 等） | _(必填)_ |
 | `CC_WAIT_NOTIFY_SECONDS` | 等待超时秒数 | `30` |
 | `CC_NOTIFY_CHANNEL` | 通知渠道（feishu / telegram / slack 等） | `feishu` |
+| `CC_GATEWAY_PORT` | OpenClaw 网关端口（未设置则跳过唤醒） | _(未设置)_ |
 | `REAP_TIMEOUT` | 孤儿进程超时秒数 | `1800` |
 
 ## 架构图
@@ -99,6 +100,34 @@ Claude Code 会话
 | Command | `CC_NOTIFY_COMMAND` | 任意命令行工具 |
 
 默认 `auto` 模式自动检测。详见 `scripts/notify.conf.example`。
+
+## Phase 1 加固 (v1.1)
+
+所有 Hook 经过以下加固改进：
+
+### 显式 Fail-Open 声明
+每个 Hook 顶部声明 `# FAIL_MODE=open` — 如果 Hook 自身崩溃，静默放行而非阻塞 Claude Code。错误不再被 `|| true` 无记录地吞掉。
+
+### JSONL 结构化审计日志
+所有 Hook 现在将审计事件写入 `~/.openclaw/logs/hooks-audit.jsonl`：
+```json
+{"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
+```
+优先使用 `jq -nc` 构建 JSON，`jq` 不可用时回退到 `printf`。`_log_jsonl()` 函数自身 fail-safe（`2>/dev/null || true`）。
+
+### 安全规则外部化
+`cc-safety-gate.sh` 支持从 `safety-rules.conf` 加载自定义规则：
+```bash
+cp scripts/safety-rules.conf.example scripts/safety-rules.conf
+# 按需编辑黑名单和受保护路径
+```
+内置默认规则**始终保留** — 外部配置只做覆盖，不做替代。配置文件不存在或不可读时，使用内置规则。
+
+### Gateway Port 动态化
+`notify-openclaw.sh` 不再硬编码网关端口。在 `notify.conf` 中设置 `CC_GATEWAY_PORT` — 未设置时跳过 Gateway 唤醒调用。
+
+### 异步派发引号修复
+`dispatch-claude.sh` 现在将 prompt 写入 `mktemp` 临时文件，而非嵌入 `nohup bash -c '...'` 字符串，消除引号转义 bug。临时文件通过 `trap EXIT` 清理。
 
 ## 依赖
 
