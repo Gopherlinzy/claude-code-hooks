@@ -255,6 +255,24 @@ These hooks use `openclaw message send` for notifications. To use a different ba
 - Email: Replace with `sendmail` or similar
 - Custom: Any command that accepts a message string
 
+## Comparison with Claude Code `--channels`
+
+Claude Code 2.1.80+ includes a `--channels` feature (research preview) that allows MCP servers to push messages into your session and relay permission approvals to your phone via claude.ai.
+
+| Feature | CC `--channels` | These Hooks |
+|---------|----------------|-------------|
+| **Status** | Research preview | Production-ready |
+| **Notification channels** | claude.ai mobile only | Feishu / Telegram / Slack / any |
+| **Permission approval** | ✅ Approve from phone | Notification only (approve in terminal) |
+| **Task completion alerts** | ❌ | ✅ |
+| **Security gates** | ❌ | ✅ Dangerous command blocking |
+| **Large file guards** | ❌ | ✅ Auto-generated file filtering |
+| **Progress tracking** | ❌ | ✅ |
+| **Orphan cleanup** | ❌ | ✅ |
+| **Dependencies** | MCP server + claude.ai account | bash + jq only |
+
+**TL;DR:** No conflict. `--channels` solves "approve from phone". These hooks are a full task lifecycle toolkit. They can run side by side.
+
 ## Dependencies
 
 - `bash` 4+
