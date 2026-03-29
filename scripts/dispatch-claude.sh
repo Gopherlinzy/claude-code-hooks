@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
 # dispatch-claude.sh — Claude Code 任务派发封装脚本
 # 安全约束：Security best practices
 #
@@ -14,6 +15,14 @@
 #   --stream        启用 stream-json 输出模式（自动追加 --output-format stream-json --verbose）
 
 set -euo pipefail
+
+# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
+_log_jsonl() {
+    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
+    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
+    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
+}
 
 # === 环境白名单隔离函数 (P1 安全加固) ===
 sanitize_env() {
@@ -189,7 +198,11 @@ fi
 if [ "${SYNC_MODE}" = true ]; then
     # --sync：前台阻塞执行（等价于现有 exec 阻塞模式，适合调试和 Fallback）
     echo "[dispatch-claude] SYNC mode | task_id=${CLAUDE_TASK_ID} | name=${TASK_NAME}"
-    echo "[$(date -Iseconds)] DISPATCH task_id=${CLAUDE_TASK_ID} name=${TASK_NAME} mode=sync workdir=${WORKDIR}" >> ~/.openclaw/logs/audit.log 2>/dev/null || true
+    if command -v jq &>/dev/null; then
+        _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "sync" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,workdir:$wd}')"
+    else
+        _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"sync\",\"workdir\":\"${WORKDIR}\"}"
+    fi
     source ~/.zshrc 2>/dev/null || true
     sanitize_env
     cd "${WORKDIR}"
@@ -199,7 +212,7 @@ else
     source ~/.zshrc 2>/dev/null || true
     export -f sanitize_env
 
-    # ASYNC 模式：将索引内容写入临时文件，避免 nohup bash -c 内嵌套引号地狱
+    # ASYNC 模式：将索引内容和 PROMPT 写入临时文件，避免 nohup bash -c 内嵌套引号地狱
     _SKILL_INDEX_TMP=""
     _ASYNC_SKILL_ARG=""
     if [[ -s "${_SKILL_INDEX_FILE}" ]]; then
@@ -208,6 +221,10 @@ else
         _ASYNC_SKILL_ARG="--append-system-prompt \"\$(<'${_SKILL_INDEX_TMP}')\""
     fi
 
+    # PROMPT 写入临时文件，彻底避免引号转义问题
+    _PROMPT_TMP="$(mktemp /tmp/openclaw-prompt.XXXXXX)"
+    printf '%s' "${PROMPT}" > "${_PROMPT_TMP}"
+
     # stream-json 模式参数（异步模式下通过字符串拼接传入 nohup）
     _ASYNC_STREAM_ARG=""
     if [ "${STREAM_MODE}" = true ]; then
@@ -215,13 +232,13 @@ else
     fi
 
     nohup bash -c "
+        # 清理临时文件的 EXIT trap（同时清理 _SKILL_INDEX_TMP 和 _PROMPT_TMP）
+        trap 'rm -f \"${_PROMPT_TMP}\" \"${_SKILL_INDEX_TMP}\"' EXIT
         cd '${WORKDIR}'
         export CLAUDE_TASK_ID='${CLAUDE_TASK_ID}'
         source ~/.zshrc 2>/dev/null || true
         sanitize_env
-        timeout ${TIMEOUT_SECS}s claude --print --permission-mode bypassPermissions ${_ASYNC_SKILL_ARG} ${_ASYNC_STREAM_ARG} '${PROMPT}' >> '${LOG_FILE}' 2>&1
-        # 清理临时索引文件
-        [[ -n '${_SKILL_INDEX_TMP}' ]] && rm -f '${_SKILL_INDEX_TMP}' 2>/dev/null || true
+        timeout ${TIMEOUT_SECS}s claude --print --permission-mode bypassPermissions ${_ASYNC_SKILL_ARG} ${_ASYNC_STREAM_ARG} \"\$(cat '${_PROMPT_TMP}')\" >> '${LOG_FILE}' 2>&1
     " > /dev/null 2>&1 &
     BG_PID=$!
     disown ${BG_PID}
@@ -264,7 +281,11 @@ except Exception as e:
 PYEOF
 
     echo "[dispatch-claude] ASYNC mode | task_id=${CLAUDE_TASK_ID} | name=${TASK_NAME} | pid=${BG_PID} | log=${LOG_FILE}"
-    echo "[$(date -Iseconds)] DISPATCH task_id=${CLAUDE_TASK_ID} name=${TASK_NAME} mode=async pid=${BG_PID} workdir=${WORKDIR}" >> ~/.openclaw/logs/audit.log 2>/dev/null || true
+    if command -v jq &>/dev/null; then
+        _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "async" --arg pid "${BG_PID}" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,pid:$pid,workdir:$wd}')"
+    else
+        _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"async\",\"pid\":\"${BG_PID}\",\"workdir\":\"${WORKDIR}\"}"
+    fi
 fi
 
 # 输出 task_id 到 stdout 供外部追踪

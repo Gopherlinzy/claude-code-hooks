@@ -46,3 +46,10 @@ CC_NOTIFY_BACKEND="auto"
 # Wait-timeout settings
 # ============================================================
 CC_WAIT_NOTIFY_SECONDS=30
+
+# ============================================================
+# OpenClaw Gateway Port (for local wake-up signal)
+# ============================================================
+# Set this to enable the localhost gateway wake call in notify-openclaw.sh.
+# If unset, the gateway curl block is skipped entirely.
+# CC_GATEWAY_PORT="3000"

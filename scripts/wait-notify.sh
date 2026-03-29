@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
+# FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
 # wait-notify.sh — PermissionRequest / Notification Hook
 # 触发时机：Claude Code 等待用户操作（权限审批、通知等）
 # 机制：写入等待标记 + 启动后台定时器，超时后发送飞书通知
 # 安全约束：遵循 Iris 风控报告规范
 
 set -uo pipefail
+
+# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
+_log_jsonl() {
+    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
+    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
+    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
+}
 
 # === 安全隔离 ===
 unset ANTHROPIC_API_KEY OPENAI_API_KEY ANTHROPIC_AUTH_TOKEN

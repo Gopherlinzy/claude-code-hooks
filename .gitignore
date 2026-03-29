@@ -1,4 +1,5 @@
 notify.conf
+scripts/safety-rules.conf
 *.log
 *.done
 *.meta

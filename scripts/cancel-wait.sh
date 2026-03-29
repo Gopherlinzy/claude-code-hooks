@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
+# FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
 # cancel-wait.sh — PostToolUse / UserPromptSubmit Hook
 # 触发时机：用户完成操作后（工具成功执行 / 用户提交新 prompt）
 # 机制：删除等待标记文件，使 wait-notify.sh 的后台定时器不再发送通知
 # 安全约束：纯文件删除操作，无外部网络调用
 
 set -uo pipefail
+
+# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
+_log_jsonl() {
+    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
+    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
+    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
+}
 
 # === 从 stdin 读取 Hook JSON ===
 STDIN_JSON="$(cat 2>/dev/null || true)"

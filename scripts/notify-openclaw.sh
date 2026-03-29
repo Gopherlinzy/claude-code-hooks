@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
+# FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
 # notify-openclaw.sh — Claude Code Stop Hook
 # 触发时机：Claude Code 任务结束（Stop Hook）
 # 从 stdin 读取 JSON 获取 session_id、stop_reason 等信息
 # 安全约束：Security best practices
+
+# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
+_log_jsonl() {
+    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
+    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
+    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
+}
 
 # === 安全隔离：卸除敏感环境变量，防止 curl 请求意外携带认证信息 ===
 unset ANTHROPIC_API_KEY
@@ -46,6 +55,13 @@ fi
 # fallback：环境变量 > CWD 目录名 > unnamed
 TASK_NAME="${TASK_NAME:-${CLAUDE_TASK_NAME:-$(basename "${PWD}" 2>/dev/null || echo "unnamed")}}"
 
+# === 加载配置文件（CC Hook 子进程不继承 ~/.zshrc 环境变量）===
+_CONF_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/notify.conf"
+if [ -f "${_CONF_FILE}" ]; then
+    # shellcheck source=/dev/null
+    source "${_CONF_FILE}"
+fi
+
 # === 常量 ===
 HOOK_DIR="~/.openclaw/scripts/claude-hooks"
 DONE_DIR="/tmp/openclaw-hooks"
@@ -88,21 +104,28 @@ cat > "${DONE_FILE}" <<EOF
 }
 EOF
 
-# === 审计日志 (P3 安全加固) ===
-echo "[$(date -Iseconds)] COMPLETE session_id=${TASK_ID_SHORT} name=${TASK_NAME} stop_reason=${STOP_REASON} event=stop" >> ~/.openclaw/logs/audit.log 2>/dev/null || true
+# === 审计日志 (JSONL) ===
+if command -v jq &>/dev/null; then
+    _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg sid "${TASK_ID_SHORT}" --arg name "${TASK_NAME}" --arg reason "${STOP_REASON}" --arg event "stop" --arg hook "notify-openclaw" '{ts:$ts,hook:$hook,session_id:$sid,name:$name,stop_reason:$reason,event:$event}')"
+else
+    _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"notify-openclaw\",\"session_id\":\"${TASK_ID_SHORT}\",\"name\":\"${TASK_NAME}\",\"stop_reason\":\"${STOP_REASON}\",\"event\":\"stop\"}"
+fi
 
 # === 清理锁文件 ===
 rm -f "${LOCK_FILE}"
 
 # === 信号通道 1：唤醒 OpenClaw 本地网关（仅限 localhost）===
-# 使用 env -i 确保最小化环境，防止意外变量泄漏
-env -i PATH="${PATH}" \
-    curl -s -X POST "http://127.0.0.1:YOUR_GATEWAY_PORT/api/cron/wake" \
-    -H "Content-Type: application/json" \
-    -d "{\"text\": \"Claude Code session done: ${TASK_ID_SHORT} (${TASK_NAME})\", \"mode\": \"now\"}" \
-    --max-time 5 \
-    --connect-timeout 3 \
-    || true
+# CC_GATEWAY_PORT 从 notify.conf 读取，未配置则跳过
+if [ -n "${CC_GATEWAY_PORT:-}" ]; then
+    # 使用 env -i 确保最小化环境，防止意外变量泄漏
+    env -i PATH="${PATH}" \
+        curl -s -X POST "http://127.0.0.1:${CC_GATEWAY_PORT}/api/cron/wake" \
+        -H "Content-Type: application/json" \
+        -d "{\"text\": \"Claude Code session done: ${TASK_ID_SHORT} (${TASK_NAME})\", \"mode\": \"now\"}" \
+        --max-time 5 \
+        --connect-timeout 3 \
+        || true
+fi
 
 # === 信号通道 2：推送通知（通过通用通知层）===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

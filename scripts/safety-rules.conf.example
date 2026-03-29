@@ -1,0 +1,36 @@
+# safety-rules.conf — cc-safety-gate.sh 自定义规则覆盖
+# 复制此文件为 safety-rules.conf 后按需修改：
+#   cp safety-rules.conf.example safety-rules.conf
+#
+# 本文件会被 cc-safety-gate.sh 通过 source 加载。
+# 硬编码默认值始终存在，本文件仅做覆盖/追加。
+# 若本文件不存在或 source 失败，安全门使用内置默认规则。
+#
+# 注意：safety-rules.conf 已加入 .gitignore，不会被提交到 Git。
+
+# === 黑名单模式（覆盖默认值）===
+# 每个元素是 grep -E 正则表达式
+# BLACKLIST_PATTERNS=(
+#     'rm -rf /'
+#     'rm -rf ~'
+#     'sudo '
+#     'chmod 777'
+#     'curl.*|.*sh'
+#     'wget.*|.*sh'
+#     'mkfs'
+#     'dd if='
+#     '> /etc/'
+#     'your_custom_pattern_here'
+# )
+
+# === 路径保护（覆盖默认值）===
+# 每个元素是 grep -F 固定字符串匹配
+# PROTECTED_PATHS=(
+#     '.ssh'
+#     'SOUL.md'
+#     'IDENTITY.md'
+#     'USER.md'
+#     '/etc/'
+#     '/System/'
+#     '/your/custom/path'
+# )

@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
+# FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
 # guard-large-files.sh — PreToolUse Hook: 拦截大文件和自动生成文件
 # 从 stdin 读取 CC 传入的 JSON，检查 tool_input 中的文件路径
 # 安全原则：任何解析失败都 exit 0 放行，绝不阻断正常工作流
 
 set -uo pipefail
+
+# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
+_log_jsonl() {
+    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
+    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
+    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
+}
 
 # === 读取 stdin JSON ===
 INPUT=$(cat)
