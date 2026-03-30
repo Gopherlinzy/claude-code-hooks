@@ -58,6 +58,11 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
 SESSION_SHORT="${SESSION_ID:0:8}"
 HOOK_EVENT="${HOOK_EVENT:-PermissionRequest}"
 
+# === P1 防御纵深：Notification 事件直接退出（即使配置被意外恢复也不会复发）===
+if [ "${HOOK_EVENT}" = "Notification" ]; then
+    exit 0
+fi
+
 # === 截断过长的命令内容（防止消息爆炸）===
 MAX_CMD_LEN=200
 if [ "${#TOOL_INPUT_CMD}" -gt "${MAX_CMD_LEN}" ]; then
@@ -70,13 +75,30 @@ mkdir -p "${MARKER_DIR}"
 # === 等待标记文件（按 session 短 ID 隔离）===
 MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"
 
-# 去重：如果已有同 session 的等待定时器在跑，不重复启动
+# === PID 文件（追踪后台定时器进程）===
+PID_FILE="${MARKER_DIR}/${SESSION_SHORT}.pid"
+
+# === 杀旧定时器（kill-old-before-new）===
+if [ -f "${PID_FILE}" ]; then
+    OLD_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
+    if [ -n "${OLD_PID}" ] && kill -0 "${OLD_PID}" 2>/dev/null; then
+        # 身份校验：确认是 sleep 进程，防止 PID reuse 误杀
+        OLD_CMD=$(ps -p "${OLD_PID}" -o command= 2>/dev/null || true)
+        if echo "${OLD_CMD}" | grep -q "sleep"; then
+            kill "${OLD_PID}" 2>/dev/null || true
+        fi
+    fi
+    rm -f "${PID_FILE}"
+fi
+
+# 去重：如果已有同 session 的等待标记且未过期，不重复启动
 if [ -f "${MARKER_FILE}" ]; then
     marker_ts=$(cat "${MARKER_FILE}" 2>/dev/null || echo "0")
     now_ts=$(date +%s)
     age=$(( now_ts - marker_ts ))
-    # 60 秒内不重复触发（防止连续权限请求产生垃圾通知）
-    if [ "${age}" -lt 60 ]; then
+    # 动态去重窗口：WAIT_SECONDS * 2（保证 > 定时器周期）
+    DEDUP_WINDOW=$(( WAIT_SECONDS * 2 ))
+    if [ "${age}" -lt "${DEDUP_WINDOW}" ]; then
         exit 0
     fi
     rm -f "${MARKER_FILE}"
@@ -144,6 +166,8 @@ EOF
     rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
 
 ) &>/dev/null &
+TIMER_PID=$!
+echo "${TIMER_PID}" > "${PID_FILE}" 2>/dev/null || true
 disown
 
 # hook 本身立即返回，不阻塞 CC 主流程

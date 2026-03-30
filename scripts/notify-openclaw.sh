@@ -127,8 +127,19 @@ if [ -n "${CC_GATEWAY_PORT:-}" ]; then
         || true
 fi
 
-# === 清理 wait-notify 标记（防止任务完成后仍发"等待操作"通知）===
+# === 清理 wait-notify 标记 + kill 定时器（防止任务完成后仍发"等待操作"通知）===
 _WAIT_MARKER_DIR="/tmp/openclaw-hooks/wait"
+_WAIT_PID_FILE="${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.pid"
+if [ -f "${_WAIT_PID_FILE}" ]; then
+    _WAIT_PID=$(cat "${_WAIT_PID_FILE}" 2>/dev/null || echo "")
+    if [ -n "${_WAIT_PID}" ] && kill -0 "${_WAIT_PID}" 2>/dev/null; then
+        _WAIT_CMD=$(ps -p "${_WAIT_PID}" -o command= 2>/dev/null || true)
+        if echo "${_WAIT_CMD}" | grep -q "sleep"; then
+            kill "${_WAIT_PID}" 2>/dev/null || true
+        fi
+    fi
+    rm -f "${_WAIT_PID_FILE}"
+fi
 rm -f "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.waiting" "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.detail" 2>/dev/null || true
 
 # === 信号通道 2：推送通知（通过通用通知层）===

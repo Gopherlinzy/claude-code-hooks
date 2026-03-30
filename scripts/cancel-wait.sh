@@ -33,6 +33,20 @@ MARKER_DIR="/tmp/openclaw-hooks/wait"
 # === 删除等待标记（如果存在）===
 MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"
 DETAIL_FILE="${MARKER_DIR}/${SESSION_SHORT}.detail"
+PID_FILE="${MARKER_DIR}/${SESSION_SHORT}.pid"
+
+# === 主动 kill 后台定时器进程（P1 加固）===
+if [ -f "${PID_FILE}" ]; then
+    TIMER_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
+    if [ -n "${TIMER_PID}" ] && kill -0 "${TIMER_PID}" 2>/dev/null; then
+        # 身份校验：确认是 sleep 进程，防止 PID reuse 误杀
+        TIMER_CMD=$(ps -p "${TIMER_PID}" -o command= 2>/dev/null || true)
+        if echo "${TIMER_CMD}" | grep -q "sleep"; then
+            kill "${TIMER_PID}" 2>/dev/null || true
+        fi
+    fi
+    rm -f "${PID_FILE}"
+fi
 
 rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
 
