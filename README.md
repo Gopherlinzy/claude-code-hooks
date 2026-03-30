@@ -1,7 +1,7 @@
 ---
 name: claude-code-hooks
 description: A collection of Claude Code hooks for task lifecycle management, security gates, wait-timeout notifications, and progress tracking. Includes stop notification, permission-request alerts, safety gates, large-file guards, task dispatch, orphan reaping, and skill index generation. Works with OpenClaw or any notification backend.
-version: 1.0.0
+version: 1.1.0
 ---
 
 # Claude Code Hooks — Task Lifecycle & Security Toolkit
@@ -70,6 +70,8 @@ Wraps `claude --print` with lifecycle management for both sync and async executi
 - Skill index auto-loading
 - Async mode with nohup/disown + timeout
 - Task metadata files for external monitoring
+- **🆕 Git Worktree isolation** — auto-creates an isolated worktree per task in git repos, protecting against [Claude Code's silent `git reset --hard` bug](https://github.com/anthropics/claude-code/issues/40710)
+- **🆕 Git safety assertion** — injects HEAD tracking instructions into Claude's prompt, detecting unexpected resets
 
 ### 📊 `check-claude-status.sh` — Task Status Checker
 Queries the current state of a dispatched Claude Code task.
@@ -333,6 +335,24 @@ Built-in defaults are **always preserved** — external config only overrides, n
 - `curl` (for Slack/Telegram/Discord/Bark/webhook notifications)
 - Claude Code CLI (`claude`)
 - `openclaw` CLI (optional — only needed if using `openclaw` notification backend)
+
+## Changelog
+
+### v1.1.0 (2026-03-30)
+
+**🛡️ Git Worktree Isolation (P0 Security)**
+
+Addresses [Claude Code issue #40710](https://github.com/anthropics/claude-code/issues/40710) — Claude Code CLI may silently execute `git reset --hard origin/main` every ~10 minutes via internal `libgit2` calls, destroying uncommitted changes.
+
+- `dispatch-claude.sh`: Auto-detects git repos and creates isolated worktrees (`git worktree add .worktrees/wt-{task_id} HEAD`)
+- Graceful degradation: if worktree creation fails, falls back to original working directory
+- Auto-appends `.worktrees/` to `.gitignore` to prevent tracking worktree contents
+- Git safety assertion injected into Claude's prompt: tracks HEAD before/after each step, flags `⚠️ GIT_RESET_DETECTED` on unexpected resets
+- Non-git directories are completely unaffected
+
+### v1.0.0 (2026-03-29)
+
+Initial release with full hook suite.
 
 ## License
 

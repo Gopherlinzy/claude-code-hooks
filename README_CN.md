@@ -21,7 +21,7 @@
 | `cancel-wait.sh` | PostToolUse / UserPromptSubmit | 取消等待超时计时器 |
 | `cc-safety-gate.sh` | PreToolUse (Bash) | 危险命令拦截（黑名单 + 路径保护） |
 | `guard-large-files.sh` | PreToolUse (Read/Edit/Write) | 自动生成文件 + 噪音目录 + 超大文件拦截 |
-| `dispatch-claude.sh` | — | 任务派发封装（同步/异步 + 进度追踪 + 环境隔离） |
+| `dispatch-claude.sh` | — | 任务派发封装（同步/异步 + 进度追踪 + 环境隔离 + 🆕 Worktree 隔离） |
 | `check-claude-status.sh` | — | 任务状态查询 |
 | `reap-orphans.sh` | — | 孤儿进程清理 |
 | `generate-skill-index.sh` | — | Skills 索引生成器 |
@@ -141,3 +141,17 @@ cp scripts/safety-rules.conf.example scripts/safety-rules.conf
 ## 许可证
 
 MIT
+
+## 更新日志
+
+### v1.1.0 (2026-03-30)
+
+**🛡️ Git Worktree 隔离（P0 安全加固）**
+
+针对 [Claude Code issue #40710](https://github.com/anthropics/claude-code/issues/40710) — Claude Code CLI 可能每 ~10 分钟通过内部 `libgit2` 静默执行 `git reset --hard origin/main`，销毁所有未提交变更。
+
+- `dispatch-claude.sh`：自动检测 git 仓库并创建隔离 worktree（`git worktree add .worktrees/wt-{task_id} HEAD`）
+- 优雅降级：worktree 创建失败时回退到原始工作目录
+- 自动将 `.worktrees/` 追加到 `.gitignore`
+- Git 安全断言注入：在 Claude prompt 中追踪每步 HEAD，检测到非预期 reset 时标注 `⚠️ GIT_RESET_DETECTED`
+- 非 git 目录完全不受影响

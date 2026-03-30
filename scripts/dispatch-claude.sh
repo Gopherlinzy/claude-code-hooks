@@ -139,17 +139,40 @@ _PROGRESS_SUFFIX='
 3. 若当前目录为 git 仓库，执行 git add -A && git commit -m "[TaskID] Step N: 简述" 提交该原子变更
 4. 更新"当前状态"行
 遇到错误时，在 ## Errors 段落记录错误信息和尝试的修复方案。
-全部完成后，将状态更新为 ✅ 完成，并在 ## Summary 段落写入变更清单。'
+全部完成后，将状态更新为 ✅ 完成，并在 ## Summary 段落写入变更清单。
+
+【GIT 安全断言 (P0)】
+如果当前目录是 git 仓库，在执行任何工具之前（Step Start），以及执行工具之后（Step End），你必须记录 HEAD：
+- 执行开始：git log --oneline -1
+- 每个 Step 完成后：git log --oneline -1
+如果你发现 HEAD 在任何非预期的 Step 中发生了重置（git reset），必须立即停止执行并在 .claude-progress.md 中标注：⚠️ GIT_RESET_DETECTED。
+'
 
 PROMPT="${PROMPT}${_PROGRESS_SUFFIX}"
-
-# === 确保 workdir 存在 ===
-mkdir -p "${WORKDIR}"
 
 # === 生成 CLAUDE_TASK_ID（date +%s_$$）===
 # 格式：unix秒_当前PID，确保跨进程唯一性
 export CLAUDE_TASK_ID="$(date +%s)_$$"
 export CLAUDE_TASK_NAME="${TASK_NAME}"
+
+# === 确保 workdir 存在 ===
+mkdir -p "${WORKDIR}"
+
+# === Worktree 隔离机制 ===
+# 如果 WORKDIR 是 git 仓库，创建一个 worktree，并将 WORKDIR 切换过去
+if git -C "${WORKDIR}" rev-parse --git-dir >/dev/null 2>&1; then
+    _ORIG_WORKDIR="${WORKDIR}"
+    _WT_DIR="${WORKDIR}/.worktrees/wt-${CLAUDE_TASK_ID}"
+    mkdir -p "${WORKDIR}/.worktrees"
+    
+    if git -C "${_ORIG_WORKDIR}" worktree add "${_WT_DIR}" HEAD 2>/dev/null; then
+        WORKDIR="${_WT_DIR}"
+        echo "[dispatch-claude] Git Worktree isolated to ${WORKDIR}"
+        grep -qxF '.worktrees/' "${_ORIG_WORKDIR}/.gitignore" 2>/dev/null || echo '.worktrees/' >> "${_ORIG_WORKDIR}/.gitignore"
+    else
+        echo "[dispatch-claude] WARNING: worktree creation failed, using original WORKDIR"
+    fi
+fi
 
 # === 确保日志输出目录存在 ===
 LOG_DIR="/tmp/openclaw-hooks"
