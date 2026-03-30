@@ -127,6 +127,10 @@ if [ -n "${CC_GATEWAY_PORT:-}" ]; then
         || true
 fi
 
+# === 清理 wait-notify 标记（防止任务完成后仍发"等待操作"通知）===
+_WAIT_MARKER_DIR="/tmp/openclaw-hooks/wait"
+rm -f "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.waiting" "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.detail" 2>/dev/null || true
+
 # === 信号通道 2：推送通知（通过通用通知层）===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/send-notification.sh"
