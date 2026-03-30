@@ -28,16 +28,36 @@
 
 ## 快速开始
 
-### 1. 安装脚本
+### 方式 A：一键安装（推荐）
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+```
+
+自动完成：① 克隆并复制脚本 ② 交互式配置通知渠道/目标 ③ 输出 settings.json 配置片段
+
+非交互模式（CI/自动化）：
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash -s -- --non-interactive
+```
+
+### 方式 B：手动安装
+
+#### 1. 安装脚本
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+cd claude-code-hooks && ./install.sh
+```
+
+或手动操作：```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 mkdir -p ~/.openclaw/scripts/claude-hooks
 cp claude-code-hooks/scripts/*.sh ~/.openclaw/scripts/claude-hooks/
 chmod +x ~/.openclaw/scripts/claude-hooks/*.sh
 ```
 
-### 2. 配置通知目标
+#### 2. 配置通知目标
 
 ```bash
 # 创建 notify.conf（CC Hook 子进程不会继承 ~/.zshrc 的环境变量！）

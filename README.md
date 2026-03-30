@@ -96,9 +96,32 @@ Scans `~/.openclaw/skills/*/SKILL.md` and generates a cached index for injection
 
 ## Quick Start
 
-### 1. Install scripts
+### Option A: One-Line Install (Recommended)
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+```
+
+This will:
+1. Clone the repo and copy scripts to `~/.openclaw/scripts/claude-hooks/`
+2. Interactively configure your notification channel and target
+3. Print the hooks config to add to `~/.claude/settings.json`
+
+For non-interactive mode (CI/automation):
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash -s -- --non-interactive
+```
+
+### Option B: Manual Install
+
+#### 1. Install scripts
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+cd claude-code-hooks && ./install.sh
+```
+
+Or manually:```bash
 # Clone and copy scripts
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 mkdir -p ~/.openclaw/scripts/claude-hooks
@@ -106,7 +129,7 @@ cp claude-code-hooks/scripts/*.sh ~/.openclaw/scripts/claude-hooks/
 chmod +x ~/.openclaw/scripts/claude-hooks/*.sh
 ```
 
-### 2. Configure notification target
+#### 2. Configure notification target
 
 ```bash
 # Create notify.conf (Claude Code hook subprocesses do NOT inherit ~/.zshrc env vars!)
@@ -119,7 +142,7 @@ EOF
 chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
 ```
 
-### 3. Register hooks in `~/.claude/settings.json`
+#### 3. Register hooks in `~/.claude/settings.json`
 
 ```json
 {
@@ -209,7 +232,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
 }
 ```
 
-### 4. Restart Claude Code
+#### 4. Restart Claude Code
 
 New hooks are loaded when a new `claude` session starts. Existing sessions won't pick up changes.
 
