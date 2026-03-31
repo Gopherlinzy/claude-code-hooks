@@ -63,7 +63,7 @@ if [ -f "${_CONF_FILE}" ]; then
 fi
 
 # === 常量 ===
-HOOK_DIR="${HOME}/.cchooks"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DONE_DIR="/tmp/cchooks"
 # 锁文件按 session_id 隔离，避免并发冲突
 LOCK_FILE="${HOOK_DIR}/.hook-lock-${TASK_ID_SHORT}"

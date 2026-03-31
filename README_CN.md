@@ -52,21 +52,21 @@ cd claude-code-hooks && ./install.sh
 
 或手动操作：```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.cchooks
-cp claude-code-hooks/scripts/*.sh ~/.cchooks/
-chmod +x ~/.cchooks/*.sh
+mkdir -p ~/.claude/scripts/claude-hooks
+cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
+chmod +x ~/.claude/scripts/claude-hooks/*.sh
 ```
 
 #### 2. 配置通知目标
 
 ```bash
 # 创建 notify.conf（CC Hook 子进程不会继承 ~/.zshrc 的环境变量！）
-cat > ~/.cchooks/notify.conf << 'EOF'
+cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
 CC_NOTIFY_TARGET="你的飞书_open_id"
 CC_WAIT_NOTIFY_SECONDS=30
 CC_NOTIFY_CHANNEL="feishu"
 EOF
-chmod 600 ~/.cchooks/notify.conf
+chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
 ```
 
 ### 3. 注册到 `~/.claude/settings.json`
@@ -129,7 +129,7 @@ Claude Code 会话
 每个 Hook 顶部声明 `# FAIL_MODE=open` — 如果 Hook 自身崩溃，静默放行而非阻塞 Claude Code。错误不再被 `|| true` 无记录地吞掉。
 
 ### JSONL 结构化审计日志
-所有 Hook 现在将审计事件写入 `~/.cchooks/logs/hooks-audit.jsonl`：
+所有 Hook 现在将审计事件写入 `~/.claude/scripts/claude-hooks/logs/hooks-audit.jsonl`：
 ```json
 {"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
 ```
@@ -198,10 +198,10 @@ Phase 1 — 新增通知后端：
 
 Phase 2 — OpenClaw 解耦：
 - 重命名 `notify-openclaw.sh` → `cc-stop-hook.sh`（git 历史保留）
-- 所有路径中性化：`/tmp/openclaw-hooks/` → `/tmp/cchooks/`、`~/.openclaw/` → `~/.cchooks/`
+- 所有路径中性化：`/tmp/openclaw-hooks/` → `/tmp/cchooks/`、`~/.openclaw/` → `~/.claude/scripts/claude-hooks/`
 - 修复预存 Bug：`HOOK_DIR` 在双引号内使用 `~`（波浪号不展开，改为 `${HOME}`）
 - `generate-skill-index.sh` 支持 `CC_SKILLS_DIR` 环境变量覆盖
-- `install.sh` 更新为 `~/.cchooks/` 路径
+- `install.sh` 更新为 `~/.claude/scripts/claude-hooks/` 路径
 - 项目现在完全独立运行，无需安装 OpenClaw
 
 Phase 3 — 用户体验：

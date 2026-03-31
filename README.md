@@ -87,7 +87,7 @@ Scans for timed-out Claude Code processes and terminates them safely.
 - Configurable timeout via `REAP_TIMEOUT` env var (default: 30 minutes)
 
 ### 📚 `generate-skill-index.sh` — Skills Index Generator
-Scans `~/.cchooks/skills/*/SKILL.md` and generates a cached index for injection into Claude's system prompt.
+Scans `~/.claude/scripts/claude-hooks/skills/*/SKILL.md` and generates a cached index for injection into Claude's system prompt.
 
 **Features:**
 - Lazy caching (only rebuilds when skills change)
@@ -103,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/
 ```
 
 This will:
-1. Clone the repo and copy scripts to `~/.cchooks/`
+1. Clone the repo and copy scripts to `~/.claude/scripts/claude-hooks/`
 2. Interactively configure your notification channel and target
 3. Print the hooks config to add to `~/.claude/settings.json`
 
@@ -124,22 +124,22 @@ cd claude-code-hooks && ./install.sh
 Or manually:```bash
 # Clone and copy scripts
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.cchooks
-cp claude-code-hooks/scripts/*.sh ~/.cchooks/
-chmod +x ~/.cchooks/*.sh
+mkdir -p ~/.claude/scripts/claude-hooks
+cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
+chmod +x ~/.claude/scripts/claude-hooks/*.sh
 ```
 
 #### 2. Configure notification target
 
 ```bash
 # Create notify.conf (Claude Code hook subprocesses do NOT inherit ~/.zshrc env vars!)
-cat > ~/.cchooks/notify.conf << 'EOF'
+cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
 # Notification target — set YOUR open_id / chat_id / user_id here
 CC_NOTIFY_TARGET="YOUR_TARGET_ID"
 CC_WAIT_NOTIFY_SECONDS=30
 CC_NOTIFY_CHANNEL="feishu"
 EOF
-chmod 600 ~/.cchooks/notify.conf
+chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
 ```
 
 #### 3. Register hooks in `~/.claude/settings.json`
@@ -153,7 +153,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/cc-stop-hook.sh"
+            "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh"
           }
         ]
       }
@@ -164,7 +164,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/guard-large-files.sh",
+            "command": "~/.claude/scripts/claude-hooks/guard-large-files.sh",
             "timeout": 5
           }
         ]
@@ -174,7 +174,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/cc-safety-gate.sh",
+            "command": "~/.claude/scripts/claude-hooks/cc-safety-gate.sh",
             "timeout": 5
           }
         ]
@@ -186,7 +186,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/wait-notify.sh",
+            "command": "~/.claude/scripts/claude-hooks/wait-notify.sh",
             "timeout": 5
           }
         ]
@@ -198,7 +198,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/wait-notify.sh",
+            "command": "~/.claude/scripts/claude-hooks/wait-notify.sh",
             "timeout": 5
           }
         ]
@@ -210,7 +210,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/cancel-wait.sh",
+            "command": "~/.claude/scripts/claude-hooks/cancel-wait.sh",
             "timeout": 3
           }
         ]
@@ -222,7 +222,7 @@ chmod 600 ~/.cchooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.cchooks/cancel-wait.sh",
+            "command": "~/.claude/scripts/claude-hooks/cancel-wait.sh",
             "timeout": 3
           }
         ]
@@ -330,7 +330,7 @@ All hooks have been hardened with the following improvements:
 Every hook declares `# FAIL_MODE=open` — if a hook itself crashes, it silently passes through instead of blocking Claude Code. No more silent failures swallowed by `|| true` with zero record.
 
 ### JSONL Structured Audit Log
-All hooks now write structured audit events to `~/.cchooks/logs/hooks-audit.jsonl`:
+All hooks now write structured audit events to `~/.claude/scripts/claude-hooks/logs/hooks-audit.jsonl`:
 ```json
 {"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
 ```

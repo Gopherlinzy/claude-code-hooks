@@ -51,11 +51,11 @@ else
   warn "~/.claude not found — will be created when Claude Code first runs"
 fi
 
-if [ -d "${HOME}/.cchooks" ]; then
-  ok "Found ~/.cchooks"
+if [ -d "${INSTALL_DIR}" ]; then
+  ok "Found ${INSTALL_DIR}"
 else
-  info "~/.cchooks not found — creating directory structure"
-  mkdir -p "${HOME}/.claude/scripts"
+  info "${INSTALL_DIR} not found — creating directory structure"
+  mkdir -p "${INSTALL_DIR}"
 fi
 
 # ─── Step 2: Copy scripts ───
@@ -169,7 +169,7 @@ fi
 # ─── Step 4: Show settings.json hooks config ───
 step 4 "Claude Code hooks registration..."
 
-HOOKS_JSON=$(cat << 'HOOKS'
+HOOKS_JSON=$(cat << HOOKS
 Add the following to your ~/.claude/settings.json under the "hooks" key:
 
 {
@@ -177,29 +177,29 @@ Add the following to your ~/.claude/settings.json under the "hooks" key:
     "Stop": [
       {
         "matcher": "",
-        "hooks": ["~/.cchooks/cc-stop-hook.sh"]
+        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cc-stop-hook.sh"}]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": ["~/.cchooks/cc-safety-gate.sh"]
+        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cc-safety-gate.sh", "timeout": 5}]
       },
       {
         "matcher": "Read",
-        "hooks": ["~/.cchooks/guard-large-files.sh"]
+        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/guard-large-files.sh", "timeout": 5}]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "",
-        "hooks": ["~/.cchooks/cancel-wait.sh"]
+        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cancel-wait.sh", "timeout": 3}]
       }
     ],
     "Notification": [
       {
         "matcher": "",
-        "hooks": ["~/.cchooks/wait-notify.sh"]
+        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/wait-notify.sh", "timeout": 5}]
       }
     ]
   }
