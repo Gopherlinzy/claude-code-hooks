@@ -32,7 +32,7 @@ PID=$(python3 -c "import json; print(json.load(open('${WORKDIR}/.claude-dispatch
 TASK_ID=$(python3 -c "import json; print(json.load(open('${WORKDIR}/.claude-dispatched'))['task_id'])" 2>/dev/null || echo "unknown")
 
 # 检查 .done 文件（Stop Hook 完成信号）
-DONE_FILE="/tmp/openclaw-hooks/${TASK_ID}.done"
+DONE_FILE="/tmp/cchooks/${TASK_ID}.done"
 if [[ -f "${DONE_FILE}" ]]; then
     STATUS="completed"
     DETAILS="task finished (stop hook fired)"
@@ -71,7 +71,7 @@ else
     STATUS="dead"
     DETAILS="PID ${PID} not alive"
     # 检查是否有日志可读
-    LOG_FILE="/tmp/openclaw-hooks/${TASK_ID}.log"
+    LOG_FILE="/tmp/cchooks/${TASK_ID}.log"
     if [[ -f "${LOG_FILE}" ]]; then
         LOG_SIZE=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
         DETAILS="${DETAILS}, log ${LOG_SIZE} bytes"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# generate-skill-index.sh — 扫描 ~/.openclaw/skills/*/SKILL.md，生成精简索引
+# generate-skill-index.sh — 扫描 ~/.cchooks/skills/*/SKILL.md，生成精简索引
 # 安全约束：Iris 风控 P0/P2 修正
 #   - YAML frontmatter 解析（awk）
 #   - 200字符硬截断
@@ -7,8 +7,8 @@
 
 set -euo pipefail
 
-SKILLS_DIR="${HOME}/.openclaw/skills"
-CACHE_DIR="${HOME}/.openclaw/cache"
+SKILLS_DIR="${CC_SKILLS_DIR:-${HOME}/.cchooks/skills}"
+CACHE_DIR="${HOME}/.cchooks/cache"
 INDEX_FILE="${CACHE_DIR}/skills-index.md"
 SENTINEL_FILE="${CACHE_DIR}/skills-index.sentinel"
 

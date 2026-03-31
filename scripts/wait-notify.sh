@@ -9,7 +9,7 @@ set -uo pipefail
 
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
-    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_dir="${HOME}/.cchooks/logs"
     local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
     mkdir -p "${_jsonl_dir}" 2>/dev/null || true
     printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
@@ -30,7 +30,7 @@ fi
 WAIT_SECONDS="${CC_WAIT_NOTIFY_SECONDS:-30}"
 NOTIFY_CHANNEL="${CC_NOTIFY_CHANNEL:-feishu}"
 NOTIFY_TARGET="${CC_NOTIFY_TARGET:-}"
-MARKER_DIR="/tmp/openclaw-hooks/wait"
+MARKER_DIR="/tmp/cchooks/wait"
 
 # 若未配置通知目标，静默退出
 if [ -z "${NOTIFY_TARGET}" ]; then

@@ -9,7 +9,7 @@ set -uo pipefail
 
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
-    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_dir="${HOME}/.cchooks/logs"
     local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
     mkdir -p "${_jsonl_dir}" 2>/dev/null || true
     printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
@@ -28,7 +28,7 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
 SESSION_SHORT="${SESSION_ID:0:8}"
 
 # === 等待标记目录 ===
-MARKER_DIR="/tmp/openclaw-hooks/wait"
+MARKER_DIR="/tmp/cchooks/wait"
 
 # === 删除等待标记（如果存在）===
 MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"

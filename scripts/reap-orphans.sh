@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # reap-orphans.sh — 清理超时的 Claude Code 孤儿进程
-# 扫描 /tmp/openclaw-hooks/*.meta，超过 TIMEOUT_SEC 且 PID 仍存活的任务将被终止
+# 扫描 /tmp/cchooks/*.meta，超过 TIMEOUT_SEC 且 PID 仍存活的任务将被终止
 
 set -euo pipefail
 
 TIMEOUT_SEC=${REAP_TIMEOUT:-1800}  # 默认 30 分钟
-META_DIR="/tmp/openclaw-hooks"
+META_DIR="/tmp/cchooks"
 NOW=$(date +%s)
 REAPED=0
 

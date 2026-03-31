@@ -7,7 +7,7 @@ set -euo pipefail
 
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
-    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_dir="${HOME}/.cchooks/logs"
     local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
     mkdir -p "${_jsonl_dir}" 2>/dev/null || true
     printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true

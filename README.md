@@ -20,7 +20,7 @@ When running Claude Code for long tasks, you face these problems:
 
 ## Hooks Included
 
-### 🔔 `notify-openclaw.sh` — Stop Hook (Task Completion Notification)
+### 🔔 `cc-stop-hook.sh` — Stop Hook (Task Completion Notification)
 Fires when Claude Code finishes a task. Writes a `.done` JSON file, sends a notification via `openclaw message send` (configurable), and optionally wakes a local gateway.
 
 **Features:**
@@ -87,7 +87,7 @@ Scans for timed-out Claude Code processes and terminates them safely.
 - Configurable timeout via `REAP_TIMEOUT` env var (default: 30 minutes)
 
 ### 📚 `generate-skill-index.sh` — Skills Index Generator
-Scans `~/.openclaw/skills/*/SKILL.md` and generates a cached index for injection into Claude's system prompt.
+Scans `~/.cchooks/skills/*/SKILL.md` and generates a cached index for injection into Claude's system prompt.
 
 **Features:**
 - Lazy caching (only rebuilds when skills change)
@@ -103,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/
 ```
 
 This will:
-1. Clone the repo and copy scripts to `~/.openclaw/scripts/claude-hooks/`
+1. Clone the repo and copy scripts to `~/.cchooks/`
 2. Interactively configure your notification channel and target
 3. Print the hooks config to add to `~/.claude/settings.json`
 
@@ -124,22 +124,22 @@ cd claude-code-hooks && ./install.sh
 Or manually:```bash
 # Clone and copy scripts
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.openclaw/scripts/claude-hooks
-cp claude-code-hooks/scripts/*.sh ~/.openclaw/scripts/claude-hooks/
-chmod +x ~/.openclaw/scripts/claude-hooks/*.sh
+mkdir -p ~/.cchooks
+cp claude-code-hooks/scripts/*.sh ~/.cchooks/
+chmod +x ~/.cchooks/*.sh
 ```
 
 #### 2. Configure notification target
 
 ```bash
 # Create notify.conf (Claude Code hook subprocesses do NOT inherit ~/.zshrc env vars!)
-cat > ~/.openclaw/scripts/claude-hooks/notify.conf << 'EOF'
+cat > ~/.cchooks/notify.conf << 'EOF'
 # Notification target — set YOUR open_id / chat_id / user_id here
 CC_NOTIFY_TARGET="YOUR_TARGET_ID"
 CC_WAIT_NOTIFY_SECONDS=30
 CC_NOTIFY_CHANNEL="feishu"
 EOF
-chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
+chmod 600 ~/.cchooks/notify.conf
 ```
 
 #### 3. Register hooks in `~/.claude/settings.json`
@@ -153,7 +153,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/notify-openclaw.sh"
+            "command": "~/.cchooks/cc-stop-hook.sh"
           }
         ]
       }
@@ -164,7 +164,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/guard-large-files.sh",
+            "command": "~/.cchooks/guard-large-files.sh",
             "timeout": 5
           }
         ]
@@ -174,7 +174,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/cc-safety-gate.sh",
+            "command": "~/.cchooks/cc-safety-gate.sh",
             "timeout": 5
           }
         ]
@@ -186,7 +186,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/wait-notify.sh",
+            "command": "~/.cchooks/wait-notify.sh",
             "timeout": 5
           }
         ]
@@ -198,7 +198,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/wait-notify.sh",
+            "command": "~/.cchooks/wait-notify.sh",
             "timeout": 5
           }
         ]
@@ -210,7 +210,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/cancel-wait.sh",
+            "command": "~/.cchooks/cancel-wait.sh",
             "timeout": 3
           }
         ]
@@ -222,7 +222,7 @@ chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
         "hooks": [
           {
             "type": "command",
-            "command": "~/.openclaw/scripts/claude-hooks/cancel-wait.sh",
+            "command": "~/.cchooks/cancel-wait.sh",
             "timeout": 3
           }
         ]
@@ -267,7 +267,7 @@ Claude Code Session
   │
   ├── UserPromptSubmit ─── cancel-wait.sh → [cancel timer]
   │
-  └── Stop ─────────────── notify-openclaw.sh → .done file + notification
+  └── Stop ─────────────── cc-stop-hook.sh → .done file + notification
 ```
 
 ## Notification Backend
@@ -330,7 +330,7 @@ All hooks have been hardened with the following improvements:
 Every hook declares `# FAIL_MODE=open` — if a hook itself crashes, it silently passes through instead of blocking Claude Code. No more silent failures swallowed by `|| true` with zero record.
 
 ### JSONL Structured Audit Log
-All hooks now write structured audit events to `~/.openclaw/logs/hooks-audit.jsonl`:
+All hooks now write structured audit events to `~/.cchooks/logs/hooks-audit.jsonl`:
 ```json
 {"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
 ```
@@ -345,7 +345,7 @@ cp scripts/safety-rules.conf.example scripts/safety-rules.conf
 Built-in defaults are **always preserved** — external config only overrides, never replaces. If the config file is missing or unreadable, the built-in rules remain active.
 
 ### Dynamic Gateway Port
-`notify-openclaw.sh` no longer has a hardcoded gateway port. Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is skipped entirely.
+`cc-stop-hook.sh` no longer has a hardcoded gateway port. Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is skipped entirely.
 
 ### Async Dispatch Quote Fix
 `dispatch-claude.sh` now writes prompts to a `mktemp` temporary file instead of embedding them in `nohup bash -c '...'`, eliminating quote-escaping bugs. Temporary files are cleaned up via `trap EXIT`.

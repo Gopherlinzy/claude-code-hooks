@@ -3,7 +3,7 @@
 # Supports multiple backends without any OpenClaw dependency.
 # Called by other hooks: source this file and call send_notify "message"
 #
-# Backends: openclaw | slack | telegram | discord | bark | webhook | command
+# Backends: openclaw | feishu | wecom | slack | telegram | discord | bark | webhook | command
 # Configure via notify.conf (CC_NOTIFY_BACKEND + backend-specific vars)
 
 set -uo pipefail

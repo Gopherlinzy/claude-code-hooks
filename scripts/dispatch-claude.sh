@@ -18,7 +18,7 @@ set -euo pipefail
 
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
-    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_dir="${HOME}/.cchooks/logs"
     local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
     mkdir -p "${_jsonl_dir}" 2>/dev/null || true
     printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
@@ -38,7 +38,7 @@ sanitize_env() {
 
 # === Skills 索引加载（Iris P1：禁止拼接字符串，用数组传参） ===
 CLAUDE_EXTRA_ARGS=()
-_SKILL_INDEX_FILE="${HOME}/.openclaw/cache/skills-index.md"
+_SKILL_INDEX_FILE="${HOME}/.cchooks/cache/skills-index.md"
 _SKILL_INDEX_TMP=""  # ASYNC 模式用的临时文件路径
 
 # 调用 generate-skill-index.sh（lazy 缓存，无变更时为 no-op）
@@ -175,7 +175,7 @@ if git -C "${WORKDIR}" rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 # === 确保日志输出目录存在 ===
-LOG_DIR="/tmp/openclaw-hooks"
+LOG_DIR="/tmp/cchooks"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/${CLAUDE_TASK_ID}.log"
 
@@ -239,13 +239,13 @@ else
     _SKILL_INDEX_TMP=""
     _ASYNC_SKILL_ARG=""
     if [[ -s "${_SKILL_INDEX_FILE}" ]]; then
-        _SKILL_INDEX_TMP="$(mktemp /tmp/openclaw-skill-index.XXXXXX)"
+        _SKILL_INDEX_TMP="$(mktemp /tmp/cchooks-skill-index.XXXXXX)"
         cp "${_SKILL_INDEX_FILE}" "${_SKILL_INDEX_TMP}"
         _ASYNC_SKILL_ARG="--append-system-prompt \"\$(<'${_SKILL_INDEX_TMP}')\""
     fi
 
     # PROMPT 写入临时文件，彻底避免引号转义问题
-    _PROMPT_TMP="$(mktemp /tmp/openclaw-prompt.XXXXXX)"
+    _PROMPT_TMP="$(mktemp /tmp/cchooks-prompt.XXXXXX)"
     printf '%s' "${PROMPT}" > "${_PROMPT_TMP}"
 
     # stream-json 模式参数（异步模式下通过字符串拼接传入 nohup）

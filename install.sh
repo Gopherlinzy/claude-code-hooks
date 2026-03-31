@@ -51,10 +51,10 @@ else
   warn "~/.claude not found — will be created when Claude Code first runs"
 fi
 
-if [ -d "${HOME}/.openclaw" ]; then
-  ok "Found ~/.openclaw"
+if [ -d "${HOME}/.cchooks" ]; then
+  ok "Found ~/.cchooks"
 else
-  info "~/.openclaw not found — creating directory structure"
+  info "~/.cchooks not found — creating directory structure"
   mkdir -p "${HOME}/.openclaw/scripts"
 fi
 
@@ -64,7 +64,7 @@ step 2 "Installing hook scripts to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 
 # Detect source: running from cloned repo or via curl pipe
-if [ -d "${SCRIPT_DIR}/scripts" ] && [ -f "${SCRIPT_DIR}/scripts/notify-openclaw.sh" ]; then
+if [ -d "${SCRIPT_DIR}/scripts" ] && [ -f "${SCRIPT_DIR}/scripts/cc-stop-hook.sh" ]; then
   # Running from cloned repo
   SRC_DIR="${SCRIPT_DIR}/scripts"
   info "Source: local repo at ${SCRIPT_DIR}"
@@ -177,29 +177,29 @@ Add the following to your ~/.claude/settings.json under the "hooks" key:
     "Stop": [
       {
         "matcher": "",
-        "hooks": ["~/.openclaw/scripts/claude-hooks/notify-openclaw.sh"]
+        "hooks": ["~/.cchooks/cc-stop-hook.sh"]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": ["~/.openclaw/scripts/claude-hooks/cc-safety-gate.sh"]
+        "hooks": ["~/.cchooks/cc-safety-gate.sh"]
       },
       {
         "matcher": "Read",
-        "hooks": ["~/.openclaw/scripts/claude-hooks/guard-large-files.sh"]
+        "hooks": ["~/.cchooks/guard-large-files.sh"]
       }
     ],
     "PostToolUse": [
       {
         "matcher": "",
-        "hooks": ["~/.openclaw/scripts/claude-hooks/cancel-wait.sh"]
+        "hooks": ["~/.cchooks/cancel-wait.sh"]
       }
     ],
     "Notification": [
       {
         "matcher": "",
-        "hooks": ["~/.openclaw/scripts/claude-hooks/wait-notify.sh"]
+        "hooks": ["~/.cchooks/wait-notify.sh"]
       }
     ]
   }
@@ -232,7 +232,7 @@ echo ""
 step 5 "Verifying installation..."
 
 ERRORS=0
-for script in notify-openclaw.sh dispatch-claude.sh cc-safety-gate.sh guard-large-files.sh wait-notify.sh cancel-wait.sh; do
+for script in cc-stop-hook.sh dispatch-claude.sh cc-safety-gate.sh guard-large-files.sh wait-notify.sh cancel-wait.sh; do
   if [ -x "${INSTALL_DIR}/${script}" ]; then
     ok "${script}"
   else

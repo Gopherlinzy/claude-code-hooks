@@ -16,7 +16,7 @@
 
 | 脚本 | 触发事件 | 功能 |
 |------|---------|------|
-| `notify-openclaw.sh` | Stop | 任务完成通知 + 审计日志 + .done 文件 |
+| `cc-stop-hook.sh` | Stop | 任务完成通知 + 审计日志 + .done 文件 |
 | `wait-notify.sh` | PermissionRequest / Notification | 等待超时提醒（默认 30 秒） |
 | `cancel-wait.sh` | PostToolUse / UserPromptSubmit | 取消等待超时计时器 |
 | `cc-safety-gate.sh` | PreToolUse (Bash) | 危险命令拦截（黑名单 + 路径保护） |
@@ -52,21 +52,21 @@ cd claude-code-hooks && ./install.sh
 
 或手动操作：```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.openclaw/scripts/claude-hooks
-cp claude-code-hooks/scripts/*.sh ~/.openclaw/scripts/claude-hooks/
-chmod +x ~/.openclaw/scripts/claude-hooks/*.sh
+mkdir -p ~/.cchooks
+cp claude-code-hooks/scripts/*.sh ~/.cchooks/
+chmod +x ~/.cchooks/*.sh
 ```
 
 #### 2. 配置通知目标
 
 ```bash
 # 创建 notify.conf（CC Hook 子进程不会继承 ~/.zshrc 的环境变量！）
-cat > ~/.openclaw/scripts/claude-hooks/notify.conf << 'EOF'
+cat > ~/.cchooks/notify.conf << 'EOF'
 CC_NOTIFY_TARGET="你的飞书_open_id"
 CC_WAIT_NOTIFY_SECONDS=30
 CC_NOTIFY_CHANNEL="feishu"
 EOF
-chmod 600 ~/.openclaw/scripts/claude-hooks/notify.conf
+chmod 600 ~/.cchooks/notify.conf
 ```
 
 ### 3. 注册到 `~/.claude/settings.json`
@@ -101,7 +101,7 @@ Claude Code 会话
   │
   ├── UserPromptSubmit ─── cancel-wait.sh → [取消定时器]
   │
-  └── Stop ─────────────── notify-openclaw.sh → .done 文件 + 通知
+  └── Stop ─────────────── cc-stop-hook.sh → .done 文件 + 通知
 ```
 
 ## 通知后端
@@ -129,7 +129,7 @@ Claude Code 会话
 每个 Hook 顶部声明 `# FAIL_MODE=open` — 如果 Hook 自身崩溃，静默放行而非阻塞 Claude Code。错误不再被 `|| true` 无记录地吞掉。
 
 ### JSONL 结构化审计日志
-所有 Hook 现在将审计事件写入 `~/.openclaw/logs/hooks-audit.jsonl`：
+所有 Hook 现在将审计事件写入 `~/.cchooks/logs/hooks-audit.jsonl`：
 ```json
 {"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
 ```
@@ -144,7 +144,7 @@ cp scripts/safety-rules.conf.example scripts/safety-rules.conf
 内置默认规则**始终保留** — 外部配置只做覆盖，不做替代。配置文件不存在或不可读时，使用内置规则。
 
 ### Gateway Port 动态化
-`notify-openclaw.sh` 不再硬编码网关端口。在 `notify.conf` 中设置 `CC_GATEWAY_PORT` — 未设置时跳过 Gateway 唤醒调用。
+`cc-stop-hook.sh` 不再硬编码网关端口。在 `notify.conf` 中设置 `CC_GATEWAY_PORT` — 未设置时跳过 Gateway 唤醒调用。
 
 ### 异步派发引号修复
 `dispatch-claude.sh` 现在将 prompt 写入 `mktemp` 临时文件，而非嵌入 `nohup bash -c '...'` 字符串，消除引号转义 bug。临时文件通过 `trap EXIT` 清理。

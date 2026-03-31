@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # FAIL_MODE=open — hook 自身故障时静默放行，不阻塞 Claude Code
-# notify-openclaw.sh — Claude Code Stop Hook
+# cc-stop-hook.sh — Claude Code Stop Hook
 # 触发时机：Claude Code 任务结束（Stop Hook）
 # 从 stdin 读取 JSON 获取 session_id、stop_reason 等信息
 # 安全约束：Security best practices
 
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
-    local _jsonl_dir="${HOME}/.openclaw/logs"
+    local _jsonl_dir="${HOME}/.cchooks/logs"
     local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
     mkdir -p "${_jsonl_dir}" 2>/dev/null || true
     printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
@@ -63,8 +63,8 @@ if [ -f "${_CONF_FILE}" ]; then
 fi
 
 # === 常量 ===
-HOOK_DIR="~/.openclaw/scripts/claude-hooks"
-DONE_DIR="/tmp/openclaw-hooks"
+HOOK_DIR="${HOME}/.cchooks"
+DONE_DIR="/tmp/cchooks"
 # 锁文件按 session_id 隔离，避免并发冲突
 LOCK_FILE="${HOOK_DIR}/.hook-lock-${TASK_ID_SHORT}"
 LOCK_TTL=60   # 秒；超过此时间的锁视为过期
@@ -106,7 +106,7 @@ EOF
 
 # === 审计日志 (JSONL) ===
 if command -v jq &>/dev/null; then
-    _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg sid "${TASK_ID_SHORT}" --arg name "${TASK_NAME}" --arg reason "${STOP_REASON}" --arg event "stop" --arg hook "notify-openclaw" '{ts:$ts,hook:$hook,session_id:$sid,name:$name,stop_reason:$reason,event:$event}')"
+    _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg sid "${TASK_ID_SHORT}" --arg name "${TASK_NAME}" --arg reason "${STOP_REASON}" --arg event "stop" --arg hook "cc-stop-hook" '{ts:$ts,hook:$hook,session_id:$sid,name:$name,stop_reason:$reason,event:$event}')"
 else
     _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"notify-openclaw\",\"session_id\":\"${TASK_ID_SHORT}\",\"name\":\"${TASK_NAME}\",\"stop_reason\":\"${STOP_REASON}\",\"event\":\"stop\"}"
 fi
@@ -128,7 +128,7 @@ if [ -n "${CC_GATEWAY_PORT:-}" ]; then
 fi
 
 # === 清理 wait-notify 标记 + kill 定时器（防止任务完成后仍发"等待操作"通知）===
-_WAIT_MARKER_DIR="/tmp/openclaw-hooks/wait"
+_WAIT_MARKER_DIR="/tmp/cchooks/wait"
 _WAIT_PID_FILE="${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.pid"
 if [ -f "${_WAIT_PID_FILE}" ]; then
     _WAIT_PID=$(cat "${_WAIT_PID_FILE}" 2>/dev/null || echo "")
