@@ -192,7 +192,7 @@ chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
     ],
     "Notification": [
       {
-        "matcher": "*",
+        "matcher": "permission_prompt",
         "hooks": [
           {
             "type": "command",
@@ -321,6 +321,7 @@ Claude Code Session
   ├── PermissionRequest ── wait-notify.sh → [30s timer] → notification
   │
   ├── Notification ─────── wait-notify.sh → [30s timer] → notification
+  │   (permission_prompt)
   │
   ├── PostToolUse ──────── cancel-wait.sh → [cancel timer]
   │
@@ -328,6 +329,79 @@ Claude Code Session
   │
   └── Stop ─────────────── cc-stop-hook.sh → .done file + notification
 ```
+
+## Claude Code Hook Events Reference
+
+Claude Code provides **7 hook event types**. Each event passes a JSON payload via stdin to the hook command.
+
+### Event Types
+
+| Event | When It Fires | `matcher` Matches Against |
+|-------|--------------|--------------------------|
+| **PreToolUse** | Before a tool executes | Tool name |
+| **PostToolUse** | After a tool executes (success) | Tool name |
+| **PostToolUseFailure** | After a tool executes (failure) | Tool name |
+| **Stop** | Session/task ends | Stop reason |
+| **Notification** | CC sends a notification | Notification type (see below) |
+| **PermissionRequest** | CC asks user for permission | Tool name |
+| **UserPromptSubmit** | User submits input | _(use `"*"`)_ |
+
+### Notification Matcher Values
+
+The `Notification` event has **4 specific matcher values**:
+
+| Matcher Value | Meaning | Should You Hook It? |
+|---------------|---------|---------------------|
+| `permission_prompt` | CC is waiting for permission approval | ✅ **Yes** — you'll miss permission requests otherwise |
+| `idle_prompt` | CC has been idle 60+ seconds, waiting for input | ⚠️ **Usually no** — fires after task completion too, causing false "waiting for action" alerts |
+| `auth_success` | Authentication succeeded | ❌ No — informational only |
+| `elicitation_dialog` | An MCP tool needs user input | 🤔 Only if you use interactive MCP tools |
+
+> **Recommended:** Set Notification matcher to `"permission_prompt"` (not `"*"`). Using `"*"` will match `idle_prompt` too, which fires when CC is idle after completing a task — causing spurious "waiting for your action" notifications even though nothing needs your attention.
+>
+> If you also use MCP tools that require input: `"permission_prompt|elicitation_dialog"`
+
+### Tool Names (for PreToolUse / PostToolUse / PermissionRequest matchers)
+
+| Tool Name | Description |
+|-----------|-------------|
+| `Bash` | Shell command execution |
+| `Read` | Read file contents |
+| `Write` | Write/create files |
+| `Edit` | Edit file contents |
+| `MultiEdit` | Edit multiple files |
+| `Glob` | File pattern matching |
+| `Grep` | Search file contents |
+| `WebFetch` | Fetch URL contents |
+| `WebSearch` | Web search |
+| `Task` | Sub-agent task |
+| `NotebookRead` | Read Jupyter notebook |
+| `NotebookEdit` | Edit Jupyter notebook |
+| `TodoWrite` | Write to todo list |
+
+### Matcher Syntax
+
+- `"*"` — Match all events of this type
+- `"Bash"` — Match exact tool/notification name
+- `"Read|Edit|Write"` — Match any of these (pipe-separated OR)
+- `""` (empty string) — ⚠️ **Avoid** — behavior is undefined, may prevent hooks from firing
+
+### stdin JSON Payload
+
+Every hook receives a JSON payload via stdin. Common fields:
+
+```json
+{
+  "session_id": "uuid-of-the-session",
+  "hook_event_name": "PreToolUse|Stop|Notification|...",
+  "cwd": "/current/working/directory",
+  "tool_name": "Bash",
+  "tool_input": { "command": "ls -la" },
+  "notification_type": "permission_prompt"
+}
+```
+
+Fields vary by event type. Use `jq` to parse safely — all included scripts handle missing fields gracefully.
 
 ## Notification Backend
 
