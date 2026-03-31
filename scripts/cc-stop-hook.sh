@@ -141,6 +141,7 @@ if [ -f "${_WAIT_PID_FILE}" ]; then
     rm -f "${_WAIT_PID_FILE}"
 fi
 rm -f "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.waiting" "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.detail" 2>/dev/null || true
+rm -f "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.counter" "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.cooldown" 2>/dev/null || true
 
 # === 信号通道 2：推送通知（通过通用通知层）===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

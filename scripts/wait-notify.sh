@@ -31,6 +31,9 @@ WAIT_SECONDS="${CC_WAIT_NOTIFY_SECONDS:-30}"
 NOTIFY_CHANNEL="${CC_NOTIFY_CHANNEL:-feishu}"
 NOTIFY_TARGET="${CC_NOTIFY_TARGET:-}"
 MARKER_DIR="/tmp/cchooks/wait"
+# === 死循环防护（学习 CC 源码 query/stopHooks.ts 熔断机制）===
+MAX_CONCURRENT_TIMERS=3       # 同一 session 最大并发定时器数
+GLOBAL_COOLDOWN_SECONDS=10    # 全局冷却：10 秒内不重复启动新定时器
 
 # 若未配置任何通知后端，静默退出
 # CC_NOTIFY_TARGET 仅 openclaw 后端需要；feishu/wecom/slack 等通过各自 URL 环境变量驱动
@@ -85,6 +88,29 @@ MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"
 
 # === PID 文件（追踪后台定时器进程）===
 PID_FILE="${MARKER_DIR}/${SESSION_SHORT}.pid"
+# === 并发计数文件 ===
+COUNTER_FILE="${MARKER_DIR}/${SESSION_SHORT}.counter"
+
+# === 死循环防护：检查当前活跃定时器数 ===
+_active_count=0
+if [ -f "${COUNTER_FILE}" ]; then
+    _active_count=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "0")
+fi
+if [ "${_active_count}" -ge "${MAX_CONCURRENT_TIMERS}" ]; then
+    _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"wait-notify\",\"event\":\"circuit_breaker\",\"session\":\"${SESSION_SHORT}\",\"reason\":\"max_concurrent_timers_${MAX_CONCURRENT_TIMERS}\"}"
+    exit 0
+fi
+
+# === 全局冷却防护 ===
+COOLDOWN_FILE="${MARKER_DIR}/${SESSION_SHORT}.cooldown"
+if [ -f "${COOLDOWN_FILE}" ]; then
+    _cd_ts=$(cat "${COOLDOWN_FILE}" 2>/dev/null || echo "0")
+    _now_ts=$(date +%s)
+    if [ $(( _now_ts - _cd_ts )) -lt "${GLOBAL_COOLDOWN_SECONDS}" ]; then
+        exit 0
+    fi
+fi
+date +%s > "${COOLDOWN_FILE}" 2>/dev/null || true
 
 # === 杀旧定时器（kill-old-before-new）===
 if [ -f "${PID_FILE}" ]; then
@@ -186,10 +212,18 @@ fi
 
     # 清理标记和详情文件
     rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
+    # 递减并发计数
+    if [ -f "${COUNTER_FILE}" ]; then
+        _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+        _cnt=$(( _cnt - 1 ))
+        [ "${_cnt}" -le 0 ] && rm -f "${COUNTER_FILE}" || echo "${_cnt}" > "${COUNTER_FILE}"
+    fi
 
 ) &>/dev/null &
 TIMER_PID=$!
 echo "${TIMER_PID}" > "${PID_FILE}" 2>/dev/null || true
+# 递增并发计数
+echo $(( _active_count + 1 )) > "${COUNTER_FILE}" 2>/dev/null || true
 disown
 
 # hook 本身立即返回，不阻塞 CC 主流程
