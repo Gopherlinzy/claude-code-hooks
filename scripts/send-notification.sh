@@ -202,7 +202,16 @@ send_notify() {
         bark)      _notify_bark "${msg}" ;;
         webhook)   _notify_webhook "${msg}" ;;
         command)   _notify_command "${msg}" ;;
-        none)      return 0 ;;
+        none)
+            # First-run hint: tell user no backend is configured (one-shot)
+            local _hint_file="${HOME}/.cchooks/.first-run-hint-shown"
+            if [ ! -f "${_hint_file}" ]; then
+                echo "[cchooks] No notification backend configured. Edit ~/.cchooks/notify.conf to set up Feishu, WeCom, Slack, or other backends. See README.md for details." >&2
+                mkdir -p "${HOME}/.cchooks" 2>/dev/null || true
+                touch "${_hint_file}" 2>/dev/null || true
+            fi
+            return 0
+            ;;
         *)
             echo "[send-notification] ERROR: unknown backend '${CC_NOTIFY_BACKEND}'" >&2
             return 1
