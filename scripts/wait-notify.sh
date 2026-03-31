@@ -68,10 +68,8 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
 SESSION_SHORT="${SESSION_ID:0:8}"
 HOOK_EVENT="${HOOK_EVENT:-PermissionRequest}"
 
-# === P1 防御纵深：Notification 事件直接退出（即使配置被意外恢复也不会复发）===
-if [ "${HOOK_EVENT}" = "Notification" ]; then
-    exit 0
-fi
+# === Notification 事件：正常处理（2026-03-31 修复，原 P1 硬杀已移除）===
+# Notification 事件现在通过 matcher:"*" 正常触发，由脚本内部逻辑处理
 
 # === 截断过长的命令内容（防止消息爆炸）===
 MAX_CMD_LEN=200

@@ -1,7 +1,7 @@
 ---
 name: claude-code-hooks
 description: A collection of Claude Code hooks for task lifecycle management, security gates, wait-timeout notifications, and progress tracking. Includes stop notification, permission-request alerts, safety gates, large-file guards, task dispatch, orphan reaping, and skill index generation. Works with OpenClaw or any notification backend.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # Claude Code Hooks — Task Lifecycle & Security Toolkit
@@ -21,16 +21,16 @@ When running Claude Code for long tasks, you face these problems:
 ## Hooks Included
 
 ### 🔔 `cc-stop-hook.sh` — Stop Hook (Task Completion Notification)
-Fires when Claude Code finishes a task. Writes a `.done` JSON file, sends a notification via `openclaw message send` (configurable), and optionally wakes a local gateway.
+Fires when Claude Code finishes a task. Writes a `.done` JSON file, sends a notification via configured backends, and optionally wakes a local gateway.
 
 **Features:**
 - Deduplication lock (60s TTL) prevents duplicate notifications
 - Session name detection from Claude's session files
 - Audit logging
-- Configurable notification channel and target
+- Configurable notification channels and targets
 
 ### ⏰ `wait-notify.sh` — PermissionRequest / Notification Hook
-When Claude asks for permission and you don't respond within N seconds, sends a reminder notification.
+When Claude asks for permission (or triggers a notification) and you don't respond within N seconds, sends a reminder notification.
 
 **Features:**
 - Background timer (non-blocking, won't stall Claude)
@@ -40,6 +40,9 @@ When Claude asks for permission and you don't respond within N seconds, sends a 
 
 ### 🛑 `cancel-wait.sh` — PostToolUse / UserPromptSubmit Hook
 Cancels pending wait-timeout notifications when you respond. Paired with `wait-notify.sh`.
+
+**Features:**
+- Grace period (5s) — prevents premature cancellation when PermissionRequest and PostToolUse fire near-simultaneously
 
 ### 🛡️ `cc-safety-gate.sh` — PreToolUse Hook (Bash Command Safety Gate)
 Blocks dangerous Bash commands before execution.
@@ -70,8 +73,8 @@ Wraps `claude --print` with lifecycle management for both sync and async executi
 - Skill index auto-loading
 - Async mode with nohup/disown + timeout
 - Task metadata files for external monitoring
-- **🆕 Git Worktree isolation** — auto-creates an isolated worktree per task in git repos, protecting against [Claude Code's silent `git reset --hard` bug](https://github.com/anthropics/claude-code/issues/40710)
-- **🆕 Git safety assertion** — injects HEAD tracking instructions into Claude's prompt, detecting unexpected resets
+- **Git Worktree isolation** — auto-creates an isolated worktree per task in git repos, protecting against [Claude Code's silent `git reset --hard` bug](https://github.com/anthropics/claude-code/issues/40710)
+- **Git safety assertion** — injects HEAD tracking instructions into Claude's prompt, detecting unexpected resets
 
 ### 📊 `check-claude-status.sh` — Task Status Checker
 Queries the current state of a dispatched Claude Code task.
@@ -121,23 +124,32 @@ git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 cd claude-code-hooks && ./install.sh
 ```
 
-Or manually:```bash
-# Clone and copy scripts
+Or manually:
+```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 mkdir -p ~/.claude/scripts/claude-hooks
 cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
 chmod +x ~/.claude/scripts/claude-hooks/*.sh
 ```
 
-#### 2. Configure notification target
+#### 2. Configure notification backends
 
 ```bash
 # Create notify.conf (Claude Code hook subprocesses do NOT inherit ~/.zshrc env vars!)
 cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
-# Notification target — set YOUR open_id / chat_id / user_id here
-CC_NOTIFY_TARGET="YOUR_TARGET_ID"
+# auto = discover all configured backends, broadcast to all
+CC_NOTIFY_BACKEND=auto
 CC_WAIT_NOTIFY_SECONDS=30
-CC_NOTIFY_CHANNEL="feishu"
+
+# --- Enable one or more backends below ---
+# Feishu:
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+
+# Slack:
+# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+
+# Bark (iOS):
+# CC_BARK_URL=https://api.day.app/YOUR_KEY
 EOF
 chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
 ```
@@ -149,11 +161,12 @@ chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
   "hooks": {
     "Stop": [
       {
-        "matcher": "",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh"
+            "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh",
+            "timeout": 10
           }
         ]
       }
@@ -232,6 +245,8 @@ chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
 }
 ```
 
+> **Note:** All matchers use `"*"` (match all). Use specific patterns like `"Bash"` or `"Read|Edit|Write"` only for targeted hooks. Empty string `""` should be avoided — its behavior is undefined and may prevent hooks from firing.
+
 #### 4. Restart Claude Code
 
 New hooks are loaded when a new `claude` session starts. Existing sessions won't pick up changes.
@@ -242,9 +257,8 @@ New hooks are loaded when a new `claude` session starts. Existing sessions won't
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CC_NOTIFY_TARGET` | Notification target (Feishu open_id, chat_id, etc.) | _(required)_ |
+| `CC_NOTIFY_BACKEND` | Backend selection (see below) | `auto` |
 | `CC_WAIT_NOTIFY_SECONDS` | Seconds before sending wait-timeout alert | `30` |
-| `CC_NOTIFY_CHANNEL` | Notification channel (`feishu`, `telegram`, etc.) | `feishu` |
 | `CC_GATEWAY_PORT` | OpenClaw gateway port (skip wake call if unset) | _(unset)_ |
 
 ### Environment Variables
@@ -263,6 +277,8 @@ Claude Code Session
   │
   ├── PermissionRequest ── wait-notify.sh → [30s timer] → notification
   │
+  ├── Notification ─────── wait-notify.sh → [30s timer] → notification
+  │
   ├── PostToolUse ──────── cancel-wait.sh → [cancel timer]
   │
   ├── UserPromptSubmit ─── cancel-wait.sh → [cancel timer]
@@ -272,12 +288,14 @@ Claude Code Session
 
 ## Notification Backend
 
-All hooks use a **universal notification dispatcher** (`send-notification.sh`) that supports 7 backends out of the box. **No OpenClaw required** — pick whichever you already use:
+All hooks use a **universal notification dispatcher** (`send-notification.sh`) that supports **9 backends** and **broadcasts to all configured channels simultaneously**.
 
 | Backend | Config Variable | Example |
 |---------|----------------|---------|
-| **Auto** | `CC_NOTIFY_BACKEND=auto` | Detects first available backend |
+| **Auto** | `CC_NOTIFY_BACKEND=auto` | Discover all configured backends, broadcast to all |
 | **OpenClaw** | `CC_NOTIFY_TARGET` | Feishu / Telegram / any OpenClaw channel |
+| **Feishu** | `NOTIFY_FEISHU_URL` | Feishu custom bot webhook (optional HMAC signing) |
+| **WeCom** | `NOTIFY_WECOM_URL` | WeCom (企业微信) group bot webhook |
 | **Slack** | `CC_SLACK_WEBHOOK_URL` | Slack Incoming Webhook |
 | **Telegram** | `CC_TELEGRAM_BOT_TOKEN` + `CC_TELEGRAM_CHAT_ID` | Telegram Bot API |
 | **Discord** | `CC_DISCORD_WEBHOOK_URL` | Discord Webhook |
@@ -285,21 +303,51 @@ All hooks use a **universal notification dispatcher** (`send-notification.sh`) t
 | **Webhook** | `CC_WEBHOOK_URL` | Any HTTP endpoint (customizable method/body) |
 | **Command** | `CC_NOTIFY_COMMAND` | Any CLI tool (message via $1 + stdin) |
 
-Set `CC_NOTIFY_BACKEND=auto` (default) and the dispatcher auto-detects the first configured backend.
+### Broadcast Mode (v1.3.0+)
 
-Example for Slack:
+By default (`CC_NOTIFY_BACKEND=auto`), the dispatcher **discovers all configured backends** and **broadcasts to every one of them**. Each backend fires independently — if one fails, the others still deliver.
+
 ```bash
-# notify.conf
-CC_NOTIFY_BACKEND="slack"
-CC_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+# Example: notify.conf — broadcasts to both Feishu AND Bark simultaneously
+CC_NOTIFY_BACKEND=auto
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+CC_BARK_URL=https://api.day.app/YOUR_KEY
+# → Both Feishu and Bark receive every notification
 ```
 
-Example for Telegram:
+You can also explicitly control which backends fire:
+
 ```bash
-# notify.conf
-CC_NOTIFY_BACKEND="telegram"
-CC_TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
-CC_TELEGRAM_CHAT_ID="987654321"
+# Explicit list — only these two, in broadcast mode
+CC_NOTIFY_BACKEND=feishu,bark
+
+# Single backend — backward-compatible
+CC_NOTIFY_BACKEND=feishu
+```
+
+### Backend Examples
+
+**Feishu (飞书):**
+```bash
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+NOTIFY_FEISHU_SECRET=your_sign_secret  # optional, for signed webhooks
+```
+
+**Slack:**
+```bash
+CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+```
+
+**Telegram:**
+```bash
+CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+CC_TELEGRAM_CHAT_ID=987654321
+```
+
+**Bark (iOS push):**
+```bash
+CC_BARK_URL=https://api.day.app/YOUR_KEY
+CC_BARK_TITLE="Claude Code"  # optional
 ```
 
 See `scripts/notify.conf.example` for all options.
@@ -311,7 +359,8 @@ Claude Code 2.1.80+ includes a `--channels` feature (research preview) that allo
 | Feature | CC `--channels` | These Hooks |
 |---------|----------------|-------------|
 | **Status** | Research preview | Production-ready |
-| **Notification channels** | claude.ai mobile only | Feishu / Telegram / Slack / any |
+| **Notification channels** | claude.ai mobile only | Feishu / Slack / Telegram / any |
+| **Multi-channel broadcast** | ❌ | ✅ All configured backends fire simultaneously |
 | **Permission approval** | ✅ Approve from phone | Notification only (approve in terminal) |
 | **Task completion alerts** | ❌ | ✅ |
 | **Security gates** | ❌ | ✅ Dangerous command blocking |
@@ -322,33 +371,25 @@ Claude Code 2.1.80+ includes a `--channels` feature (research preview) that allo
 
 **TL;DR:** No conflict. `--channels` solves "approve from phone". These hooks are a full task lifecycle toolkit. They can run side by side.
 
-## Phase 1 Hardening (v1.1)
-
-All hooks have been hardened with the following improvements:
+## Hardening Notes
 
 ### Explicit Fail-Open
-Every hook declares `# FAIL_MODE=open` — if a hook itself crashes, it silently passes through instead of blocking Claude Code. No more silent failures swallowed by `|| true` with zero record.
+Every hook declares `# FAIL_MODE=open` — if a hook itself crashes, it silently passes through instead of blocking Claude Code.
 
 ### JSONL Structured Audit Log
-All hooks now write structured audit events to `~/.claude/scripts/claude-hooks/logs/hooks-audit.jsonl`:
+All hooks write structured audit events to `~/.cchooks/logs/hooks-audit.jsonl`:
 ```json
 {"ts":"2026-03-30T01:00:00+08:00","hook":"cc-safety-gate","action":"deny","rule":"rm -rf /","cmd":"rm -rf /tmp"}
 ```
-Uses `jq -nc` when available, falls back to `printf` formatting. The `_log_jsonl()` function is itself fail-safe (`2>/dev/null || true`).
 
 ### Externalized Safety Rules
-`cc-safety-gate.sh` now supports loading custom rules from `safety-rules.conf`:
-```bash
-cp scripts/safety-rules.conf.example scripts/safety-rules.conf
-# Edit to add/remove blacklist patterns and protected paths
-```
-Built-in defaults are **always preserved** — external config only overrides, never replaces. If the config file is missing or unreadable, the built-in rules remain active.
+`cc-safety-gate.sh` supports loading custom rules from `safety-rules.conf`. Built-in defaults are always preserved — external config only overrides, never replaces.
 
 ### Dynamic Gateway Port
-`cc-stop-hook.sh` no longer has a hardcoded gateway port. Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is skipped entirely.
+Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is skipped entirely.
 
 ### Async Dispatch Quote Fix
-`dispatch-claude.sh` now writes prompts to a `mktemp` temporary file instead of embedding them in `nohup bash -c '...'`, eliminating quote-escaping bugs. Temporary files are cleaned up via `trap EXIT`.
+`dispatch-claude.sh` writes prompts to a `mktemp` temporary file instead of embedding them in `nohup bash -c '...'`, eliminating quote-escaping bugs.
 
 ## Dependencies
 
@@ -357,108 +398,79 @@ Built-in defaults are **always preserved** — external config only overrides, n
 | Dependency | Version | Purpose |
 |-----------|---------|---------|
 | `bash` | 4.0+ | All hook scripts (macOS ships with bash 3.2 — install via `brew install bash`) |
-| `curl` | any | Notification delivery (Feishu, WeCom, Slack, Telegram, Discord, Bark, webhook) |
-| `python3` | 3.6+ | JSON escaping in notification backends and `dispatch-claude.sh` |
-| Claude Code CLI | latest | `claude` command — the hooks are designed for Claude Code |
+| `curl` | any | Notification delivery |
+| `python3` | 3.6+ | JSON escaping in notification backends |
+| Claude Code CLI | latest | `claude` command |
 
 ### Recommended
 
 | Dependency | Purpose |
 |-----------|---------|
-| `jq` | JSON parsing in hooks (gracefully degrades to `printf` fallback if missing) |
-| `openssl` | HMAC-SHA256 signing for Feishu webhook (only needed if `NOTIFY_FEISHU_SECRET` is set) |
-| `git` | Worktree isolation in `dispatch-claude.sh` (non-git dirs unaffected) |
-
-### Optional
-
-| Dependency | Purpose |
-|-----------|---------|
-| `openclaw` CLI | Only needed if using `openclaw` as notification backend |
+| `jq` | JSON parsing (gracefully degrades if missing) |
+| `openssl` | HMAC-SHA256 signing for Feishu webhook |
+| `git` | Worktree isolation in `dispatch-claude.sh` |
 
 ### Platform Notes
 
-- **macOS**: Default bash is 3.2 (GPLv2). Install bash 4+ via `brew install bash`. Other deps (`curl`, `python3`, `git`, `openssl`) are pre-installed.
-- **Linux (Ubuntu/Debian)**: All required deps available via `apt`. `bash` 4+ is default.
+- **macOS**: Default bash is 3.2 (GPLv2). Install bash 4+ via `brew install bash`. Other deps pre-installed.
+- **Linux (Ubuntu/Debian)**: All deps available via `apt`. `bash` 4+ is default.
 - **Windows (WSL)**: Fully supported under WSL2 with Ubuntu.
-
----
 
 ## Platform Installation Guides
 
 ### 🍎 macOS
 
-macOS comes with most dependencies pre-installed. The only potential issue is bash version (macOS ships bash 3.2).
-
 ```bash
-# 1. Check bash version
-bash --version  # If < 4.0, upgrade:
-brew install bash
+# 1. Check bash version (need 4.0+)
+bash --version
+brew install bash  # if needed
 
-# 2. Ensure Claude Code is installed
-claude --version  # If not found:
-npm install -g @anthropic-ai/claude-code
-
-# 3. Install hooks (one-line)
+# 2. Install hooks
 curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
 
-# 4. Configure notification backend (example: Feishu)
+# 3. Configure backends
 echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
 
-# 5. Copy the printed hooks config to ~/.claude/settings.json
-# Then restart Claude Code
-
-# 6. Test
+# 4. Test
 ~/.claude/scripts/claude-hooks/send-notification.sh "Hello from macOS!"
 ```
 
 ### 🪟 Windows (WSL2)
 
-Claude Code requires WSL2 on Windows. All hooks run inside the WSL2 Linux environment.
-
-#### Prerequisites
-
-```powershell
-# In PowerShell (Admin) — install WSL2 if not already
-wsl --install -d Ubuntu
-
-# Reboot if prompted, then open Ubuntu terminal
-```
-
-#### Inside WSL2 (Ubuntu)
-
 ```bash
-# 1. Install Node.js (for Claude Code)
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# 2. Install Claude Code
-npm install -g @anthropic-ai/claude-code
-
-# 3. Install dependencies
+# Inside WSL2 Ubuntu:
 sudo apt-get install -y jq python3 curl openssl
-
-# 4. Install hooks
 curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
-
-# 5. Configure notification backend (example: Feishu)
 echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
-
-# 6. Copy the printed hooks config to ~/.claude/settings.json
-# Then restart Claude Code
-
-# 7. Test
-~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Windows WSL2!"
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from WSL2!"
 ```
-
-#### Windows-Specific Notes
-
-- **Path format**: All paths use Linux format inside WSL2 (e.g., `~/.claude/scripts/`), not Windows paths
-- **VS Code integration**: If using Claude Code via VS Code, ensure VS Code connects to WSL2 (`Remote - WSL` extension)
-- **File permissions**: WSL2 Ubuntu handles `chmod +x` natively, no extra steps needed
-- **Notification delivery**: `curl` runs inside WSL2 and can reach external webhooks (Feishu, WeCom, Slack, etc.) normally
-- **Windows Terminal recommended**: Use Windows Terminal for better bash experience in WSL2
 
 ## Changelog
+
+### v1.3.0 (2026-03-31)
+
+**📡 Broadcast Mode — Multi-Channel Simultaneous Notifications**
+
+- **`send-notification.sh` v2**: Complete rewrite of backend selection logic
+  - `auto` mode now discovers **all** configured backends and broadcasts to every one of them simultaneously
+  - Each backend fires independently — one failure doesn't block others
+  - Supports comma-separated explicit lists: `CC_NOTIFY_BACKEND=feishu,slack,bark`
+  - Single backend still works for backward compatibility
+  - All backend functions now return proper exit codes instead of `|| true` swallowing errors
+  - Warning messages on per-backend failures (visible in stderr, won't block Claude Code)
+
+- **`cancel-wait.sh`**: Added 5-second grace period to prevent premature cancellation when PermissionRequest and PostToolUse events fire near-simultaneously
+
+- **`wait-notify.sh`**: Removed hardcoded `exit 0` that was silently killing all Notification events. Notification hook now works correctly with `matcher: "*"`.
+
+- **`notify.conf.example`**: Updated with broadcast mode documentation and all 9 backend examples
+
+- **`settings.json` fixes applied in this release**:
+  - `Stop` hook: Now correctly registers `cc-stop-hook.sh` (was missing — only a no-op SUPERSET command was registered)
+  - `Notification` matcher: `""` → `"*"` (empty string prevented hook from firing)
+  - Removed all dead SUPERSET_HOME_DIR commands (5 instances across 4 events)
+  - Removed `/tmp/debug-*.sh` references (security risk — writable by any local user)
+  - `PermissionRequest`: Debug wrapper replaced with `wait-notify.sh` for timeout notifications
 
 ### v1.2.0 (2026-03-31)
 
@@ -480,19 +492,18 @@ Phase 2 — OpenClaw decoupling:
 
 Phase 3 — User experience:
 - First-run hint: when no notification backend is configured, a one-shot stderr message guides setup
-- `install.sh` now prints post-install configuration guide with Feishu/WeCom/Slack one-liner commands
+- `install.sh` now prints post-install configuration guide
 
 ### v1.1.0 (2026-03-30)
 
 **🛡️ Git Worktree Isolation (P0 Security)**
 
-Addresses [Claude Code issue #40710](https://github.com/anthropics/claude-code/issues/40710) — Claude Code CLI may silently execute `git reset --hard origin/main` every ~10 minutes via internal `libgit2` calls, destroying uncommitted changes.
+Addresses [Claude Code issue #40710](https://github.com/anthropics/claude-code/issues/40710).
 
-- `dispatch-claude.sh`: Auto-detects git repos and creates isolated worktrees (`git worktree add .worktrees/wt-{task_id} HEAD`)
-- Graceful degradation: if worktree creation fails, falls back to original working directory
-- Auto-appends `.worktrees/` to `.gitignore` to prevent tracking worktree contents
-- Git safety assertion injected into Claude's prompt: tracks HEAD before/after each step, flags `⚠️ GIT_RESET_DETECTED` on unexpected resets
-- Non-git directories are completely unaffected
+- `dispatch-claude.sh`: Auto-detects git repos and creates isolated worktrees
+- Graceful degradation: falls back to original working directory if worktree creation fails
+- Git safety assertion injected into Claude's prompt
+- Non-git directories completely unaffected
 
 ### v1.0.0 (2026-03-29)
 
