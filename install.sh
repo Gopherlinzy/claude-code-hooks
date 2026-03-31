@@ -31,7 +31,7 @@ for arg in "$@"; do
   esac
 done
 
-echo -e "\n${BOLD}🦞 Claude Code Hooks Installer v1.1.0${NC}\n"
+echo -e "\n${BOLD}🦞 Claude Code Hooks Installer${NC}\n"
 
 # ─── Step 1: Environment check ───
 step 1 "Checking environment..."
