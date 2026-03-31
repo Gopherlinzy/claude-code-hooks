@@ -381,6 +381,83 @@ Built-in defaults are **always preserved** — external config only overrides, n
 - **Linux (Ubuntu/Debian)**: All required deps available via `apt`. `bash` 4+ is default.
 - **Windows (WSL)**: Fully supported under WSL2 with Ubuntu.
 
+---
+
+## Platform Installation Guides
+
+### 🍎 macOS
+
+macOS comes with most dependencies pre-installed. The only potential issue is bash version (macOS ships bash 3.2).
+
+```bash
+# 1. Check bash version
+bash --version  # If < 4.0, upgrade:
+brew install bash
+
+# 2. Ensure Claude Code is installed
+claude --version  # If not found:
+npm install -g @anthropic-ai/claude-code
+
+# 3. Install hooks (one-line)
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+
+# 4. Configure notification backend (example: Feishu)
+echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
+
+# 5. Copy the printed hooks config to ~/.claude/settings.json
+# Then restart Claude Code
+
+# 6. Test
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from macOS!"
+```
+
+### 🪟 Windows (WSL2)
+
+Claude Code requires WSL2 on Windows. All hooks run inside the WSL2 Linux environment.
+
+#### Prerequisites
+
+```powershell
+# In PowerShell (Admin) — install WSL2 if not already
+wsl --install -d Ubuntu
+
+# Reboot if prompted, then open Ubuntu terminal
+```
+
+#### Inside WSL2 (Ubuntu)
+
+```bash
+# 1. Install Node.js (for Claude Code)
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 2. Install Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# 3. Install dependencies
+sudo apt-get install -y jq python3 curl openssl
+
+# 4. Install hooks
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+
+# 5. Configure notification backend (example: Feishu)
+echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
+
+# 6. Copy the printed hooks config to ~/.claude/settings.json
+# Then restart Claude Code
+
+# 7. Test
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Windows WSL2!"
+```
+
+#### Windows-Specific Notes
+
+- **Path format**: All paths use Linux format inside WSL2 (e.g., `~/.claude/scripts/`), not Windows paths
+- **VS Code integration**: If using Claude Code via VS Code, ensure VS Code connects to WSL2 (`Remote - WSL` extension)
+- **File permissions**: WSL2 Ubuntu handles `chmod +x` natively, no extra steps needed
+- **Notification delivery**: `curl` runs inside WSL2 and can reach external webhooks (Feishu, WeCom, Slack, etc.) normally
+- **Windows Terminal recommended**: Use Windows Terminal for better bash experience in WSL2
+
 ## Changelog
 
 ### v1.2.0 (2026-03-31)

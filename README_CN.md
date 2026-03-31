@@ -180,6 +180,83 @@ cp scripts/safety-rules.conf.example scripts/safety-rules.conf
 - **Linux (Ubuntu/Debian)**：所有依赖可通过 `apt` 安装，bash 4+ 为默认。
 - **Windows (WSL)**：WSL2 Ubuntu 下完全支持。
 
+---
+
+## 平台安装指南
+
+### 🍎 macOS
+
+macOS 自带大部分依赖，唯一需要注意的是 bash 版本（系统自带 3.2）。
+
+```bash
+# 1. 检查 bash 版本
+bash --version  # 如果 < 4.0，升级：
+brew install bash
+
+# 2. 确认 Claude Code 已安装
+claude --version  # 如果未安装：
+npm install -g @anthropic-ai/claude-code
+
+# 3. 一键安装 hooks
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+
+# 4. 配置通知后端（示例：飞书）
+echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
+
+# 5. 将打印的 hooks 配置复制到 ~/.claude/settings.json
+# 然后重启 Claude Code
+
+# 6. 测试
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from macOS!"
+```
+
+### 🪟 Windows (WSL2)
+
+Claude Code 在 Windows 上需要 WSL2 环境。所有 hooks 在 WSL2 Linux 环境内运行。
+
+#### 前置条件
+
+```powershell
+# 在 PowerShell（管理员）中 — 安装 WSL2
+wsl --install -d Ubuntu
+
+# 如提示，重启后打开 Ubuntu 终端
+```
+
+#### 在 WSL2 (Ubuntu) 中
+
+```bash
+# 1. 安装 Node.js（Claude Code 需要）
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 2. 安装 Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# 3. 安装依赖
+sudo apt-get install -y jq python3 curl openssl
+
+# 4. 安装 hooks
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+
+# 5. 配置通知后端（示例：飞书）
+echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
+
+# 6. 将打印的 hooks 配置复制到 ~/.claude/settings.json
+# 然后重启 Claude Code
+
+# 7. 测试
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Windows WSL2!"
+```
+
+#### Windows 特别注意
+
+- **路径格式**：WSL2 内使用 Linux 路径（如 `~/.claude/scripts/`），不是 Windows 路径
+- **VS Code 集成**：如果通过 VS Code 使用 Claude Code，确保 VS Code 连接到 WSL2（`Remote - WSL` 扩展）
+- **文件权限**：WSL2 Ubuntu 原生支持 `chmod +x`，无需额外操作
+- **通知投递**：`curl` 在 WSL2 内运行，可正常访问外部 webhook（飞书、企微、Slack 等）
+- **推荐终端**：使用 Windows Terminal 获得更好的 bash 体验
+
 ## 许可证
 
 MIT
