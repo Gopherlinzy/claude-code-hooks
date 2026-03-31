@@ -128,6 +128,14 @@ cat > "${DETAIL_FILE}" <<EOF
 }
 EOF
 
+# === 检查任务是否已完成（.done 文件存在则跳过）===
+DONE_DIR="/tmp/cchooks"
+if [ -f "${DONE_DIR}/${SESSION_SHORT}.done" ]; then
+    # 任务已完成，不需要等待通知
+    rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
+    exit 0
+fi
+
 # === 启动后台定时器（非阻塞）===
 (
     sleep "${WAIT_SECONDS}"
@@ -136,6 +144,12 @@ EOF
     if [ ! -f "${MARKER_FILE}" ]; then
         # 标记已被取消，用户已操作，不发通知
         rm -f "${DETAIL_FILE}" 2>/dev/null || true
+        exit 0
+    fi
+
+    # 再次检查任务是否已在等待期间完成
+    if [ -f "${DONE_DIR}/${SESSION_SHORT}.done" ]; then
+        rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
         exit 0
     fi
 
