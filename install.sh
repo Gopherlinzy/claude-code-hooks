@@ -16,7 +16,7 @@ step()  { echo -e "\n${CYAN}${BOLD}[$1/$TOTAL_STEPS]${NC} ${BOLD}$2${NC}"; }
 
 TOTAL_STEPS=5
 NON_INTERACTIVE=false
-INSTALL_DIR="${HOME}/.openclaw/scripts/claude-hooks"
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
 CLAUDE_DIR="${HOME}/.claude"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 
@@ -55,7 +55,7 @@ if [ -d "${HOME}/.cchooks" ]; then
   ok "Found ~/.cchooks"
 else
   info "~/.cchooks not found — creating directory structure"
-  mkdir -p "${HOME}/.openclaw/scripts"
+  mkdir -p "${HOME}/.claude/scripts"
 fi
 
 # ─── Step 2: Copy scripts ───
