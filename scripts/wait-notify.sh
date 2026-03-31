@@ -32,8 +32,18 @@ NOTIFY_CHANNEL="${CC_NOTIFY_CHANNEL:-feishu}"
 NOTIFY_TARGET="${CC_NOTIFY_TARGET:-}"
 MARKER_DIR="/tmp/cchooks/wait"
 
-# 若未配置通知目标，静默退出
-if [ -z "${NOTIFY_TARGET}" ]; then
+# 若未配置任何通知后端，静默退出
+# CC_NOTIFY_TARGET 仅 openclaw 后端需要；feishu/wecom/slack 等通过各自 URL 环境变量驱动
+if [ -z "${NOTIFY_TARGET}" ] \
+    && [ -z "${NOTIFY_FEISHU_URL:-}" ] \
+    && [ -z "${NOTIFY_WECOM_URL:-}" ] \
+    && [ -z "${CC_SLACK_WEBHOOK_URL:-}" ] \
+    && [ -z "${CC_TELEGRAM_BOT_TOKEN:-}" ] \
+    && [ -z "${CC_DISCORD_WEBHOOK_URL:-}" ] \
+    && [ -z "${CC_BARK_URL:-}" ] \
+    && [ -z "${CC_WEBHOOK_URL:-}" ] \
+    && [ -z "${CC_NOTIFY_COMMAND:-}" ] \
+    && ! command -v openclaw &>/dev/null; then
     exit 0
 fi
 
