@@ -151,18 +151,62 @@ cp scripts/safety-rules.conf.example scripts/safety-rules.conf
 
 ## 依赖
 
-- `bash` 4+
-- `jq`（JSON 解析，缺失时优雅降级）
-- `python3`（JSON 编码 + 通知后端）
-- `curl`（Slack/Telegram/Discord/Bark/Webhook 通知）
-- Claude Code CLI (`claude`)
-- `openclaw` CLI（可选 — 仅使用 openclaw 通知后端时需要）
+### 必需
+
+| 依赖 | 版本 | 用途 |
+|-----|------|------|
+| `bash` | 4.0+ | 所有 hook 脚本（macOS 自带 bash 3.2，需 `brew install bash` 升级） |
+| `curl` | 任意 | 通知投递（飞书、企微、Slack、Telegram、Discord、Bark、webhook） |
+| `python3` | 3.6+ | 通知后端 JSON 编码 + `dispatch-claude.sh` |
+| Claude Code CLI | 最新版 | `claude` 命令 — hooks 专为 Claude Code 设计 |
+
+### 推荐
+
+| 依赖 | 用途 |
+|-----|------|
+| `jq` | JSON 解析（缺失时优雅降级为 `printf` fallback） |
+| `openssl` | 飞书 webhook HMAC-SHA256 签名（仅配置 `NOTIFY_FEISHU_SECRET` 时需要） |
+| `git` | `dispatch-claude.sh` 的 worktree 隔离（非 git 目录不受影响） |
+
+### 可选
+
+| 依赖 | 用途 |
+|-----|------|
+| `openclaw` CLI | 仅使用 openclaw 通知后端时需要 |
+
+### 平台说明
+
+- **macOS**：默认 bash 为 3.2（GPLv2），需通过 `brew install bash` 安装 4+。其他依赖（`curl`、`python3`、`git`、`openssl`）已预装。
+- **Linux (Ubuntu/Debian)**：所有依赖可通过 `apt` 安装，bash 4+ 为默认。
+- **Windows (WSL)**：WSL2 Ubuntu 下完全支持。
 
 ## 许可证
 
 MIT
 
 ## 更新日志
+
+### v1.2.0 (2026-03-31)
+
+**🌍 飞书 & 企微 Webhook + 完全脱离 OpenClaw 依赖**
+
+Phase 1 — 新增通知后端：
+- 新增 `_notify_feishu()` — 飞书自定义机器人 webhook，支持可选 HMAC-SHA256 签名
+- 新增 `_notify_wecom()` — 企业微信群机器人 webhook（零鉴权）
+- 自动检测优先级：`openclaw → feishu → wecom → slack → telegram → discord → bark → webhook → command`
+- 总计支持 **9** 种通知后端（原 7 种）
+
+Phase 2 — OpenClaw 解耦：
+- 重命名 `notify-openclaw.sh` → `cc-stop-hook.sh`（git 历史保留）
+- 所有路径中性化：`/tmp/openclaw-hooks/` → `/tmp/cchooks/`、`~/.openclaw/` → `~/.cchooks/`
+- 修复预存 Bug：`HOOK_DIR` 在双引号内使用 `~`（波浪号不展开，改为 `${HOME}`）
+- `generate-skill-index.sh` 支持 `CC_SKILLS_DIR` 环境变量覆盖
+- `install.sh` 更新为 `~/.cchooks/` 路径
+- 项目现在完全独立运行，无需安装 OpenClaw
+
+Phase 3 — 用户体验：
+- 首次运行提示：未配置通知后端时，一次性 stderr 提示引导配置
+- `install.sh` 安装完成后打印飞书/企微/Slack 配置一键命令
 
 ### v1.1.0 (2026-03-30)
 

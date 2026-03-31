@@ -1,7 +1,7 @@
 ---
 name: claude-code-hooks
 description: A collection of Claude Code hooks for task lifecycle management, security gates, wait-timeout notifications, and progress tracking. Includes stop notification, permission-request alerts, safety gates, large-file guards, task dispatch, orphan reaping, and skill index generation. Works with OpenClaw or any notification backend.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Claude Code Hooks — Task Lifecycle & Security Toolkit
@@ -352,14 +352,58 @@ Built-in defaults are **always preserved** — external config only overrides, n
 
 ## Dependencies
 
-- `bash` 4+
-- `jq` (for JSON parsing; gracefully degrades if missing)
-- `python3` (for JSON encoding in `dispatch-claude.sh` and notification backends)
-- `curl` (for Slack/Telegram/Discord/Bark/webhook notifications)
-- Claude Code CLI (`claude`)
-- `openclaw` CLI (optional — only needed if using `openclaw` notification backend)
+### Required
+
+| Dependency | Version | Purpose |
+|-----------|---------|---------|
+| `bash` | 4.0+ | All hook scripts (macOS ships with bash 3.2 — install via `brew install bash`) |
+| `curl` | any | Notification delivery (Feishu, WeCom, Slack, Telegram, Discord, Bark, webhook) |
+| `python3` | 3.6+ | JSON escaping in notification backends and `dispatch-claude.sh` |
+| Claude Code CLI | latest | `claude` command — the hooks are designed for Claude Code |
+
+### Recommended
+
+| Dependency | Purpose |
+|-----------|---------|
+| `jq` | JSON parsing in hooks (gracefully degrades to `printf` fallback if missing) |
+| `openssl` | HMAC-SHA256 signing for Feishu webhook (only needed if `NOTIFY_FEISHU_SECRET` is set) |
+| `git` | Worktree isolation in `dispatch-claude.sh` (non-git dirs unaffected) |
+
+### Optional
+
+| Dependency | Purpose |
+|-----------|---------|
+| `openclaw` CLI | Only needed if using `openclaw` as notification backend |
+
+### Platform Notes
+
+- **macOS**: Default bash is 3.2 (GPLv2). Install bash 4+ via `brew install bash`. Other deps (`curl`, `python3`, `git`, `openssl`) are pre-installed.
+- **Linux (Ubuntu/Debian)**: All required deps available via `apt`. `bash` 4+ is default.
+- **Windows (WSL)**: Fully supported under WSL2 with Ubuntu.
 
 ## Changelog
+
+### v1.2.0 (2026-03-31)
+
+**🌍 Feishu & WeCom Webhook + Full Decoupling from OpenClaw**
+
+Phase 1 — New notification backends:
+- Added `_notify_feishu()` — Feishu (飞书) custom bot webhook with optional HMAC-SHA256 signing
+- Added `_notify_wecom()` — WeCom (企业微信) group bot webhook (zero auth)
+- Auto-detection priority: `openclaw → feishu → wecom → slack → telegram → discord → bark → webhook → command`
+- Total supported backends: **9** (up from 7)
+
+Phase 2 — OpenClaw decoupling:
+- Renamed `notify-openclaw.sh` → `cc-stop-hook.sh` (git history preserved)
+- All paths neutralized: `/tmp/openclaw-hooks/` → `/tmp/cchooks/`, `~/.openclaw/` → `~/.cchooks/`
+- Fixed pre-existing bug: `HOOK_DIR` used `~` inside double quotes (tilde doesn't expand — changed to `${HOME}`)
+- `generate-skill-index.sh` now uses `CC_SKILLS_DIR` env var with fallback
+- `install.sh` updated to use `~/.cchooks/` paths
+- Project now runs completely standalone — no OpenClaw dependency required
+
+Phase 3 — User experience:
+- First-run hint: when no notification backend is configured, a one-shot stderr message guides setup
+- `install.sh` now prints post-install configuration guide with Feishu/WeCom/Slack one-liner commands
 
 ### v1.1.0 (2026-03-30)
 
