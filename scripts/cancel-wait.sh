@@ -35,6 +35,21 @@ MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"
 DETAIL_FILE="${MARKER_DIR}/${SESSION_SHORT}.detail"
 PID_FILE="${MARKER_DIR}/${SESSION_SHORT}.pid"
 
+# === 防误杀：标记刚写入不到 GRACE_SECONDS 秒则跳过清除 ===
+# PermissionRequest 和 PostToolUse 可能几乎同时触发
+# 如果标记太新，说明用户还没来得及操作，不应该取消
+GRACE_SECONDS=5
+
+if [ -f "${MARKER_FILE}" ]; then
+    marker_ts=$(cat "${MARKER_FILE}" 2>/dev/null || echo "0")
+    now_ts=$(date +%s)
+    age=$(( now_ts - marker_ts ))
+    if [ "${age}" -lt "${GRACE_SECONDS}" ]; then
+        # 标记太新，跳过清除（保护定时器继续倒计时）
+        exit 0
+    fi
+fi
+
 # === 主动 kill 后台定时器进程（P1 加固）===
 if [ -f "${PID_FILE}" ]; then
     TIMER_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
