@@ -73,9 +73,9 @@ echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN'
 ~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Linux!"
 ```
 
-### 🪟 Windows (WSL2)
+### 🪟 Windows (WSL2 Required)
 
-Claude Code requires WSL2 on Windows. All hooks run inside the WSL2 Linux environment.
+> **Why WSL2?** Claude Code CLI only supports macOS and Linux. There is no native Windows build — WSL2 is the only way to run it on Windows. This is a Claude Code limitation, not ours.
 
 ```powershell
 # In PowerShell (Admin) — install WSL2 if needed
