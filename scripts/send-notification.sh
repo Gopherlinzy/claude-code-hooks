@@ -22,6 +22,10 @@ CC_NOTIFY_BACKEND="${CC_NOTIFY_BACKEND:-auto}"
 if [ "${CC_NOTIFY_BACKEND}" = "auto" ]; then
     if command -v openclaw &>/dev/null; then
         CC_NOTIFY_BACKEND="openclaw"
+    elif [ -n "${NOTIFY_FEISHU_URL:-}" ]; then
+        CC_NOTIFY_BACKEND="feishu"
+    elif [ -n "${NOTIFY_WECOM_URL:-}" ]; then
+        CC_NOTIFY_BACKEND="wecom"
     elif [ -n "${CC_SLACK_WEBHOOK_URL:-}" ]; then
         CC_NOTIFY_BACKEND="slack"
     elif [ -n "${CC_TELEGRAM_BOT_TOKEN:-}" ]; then
@@ -112,6 +116,43 @@ _notify_bark() {
     curl -s "${url}/${encoded_title}/${encoded_msg}" >/dev/null 2>&1 || true
 }
 
+_notify_feishu() {
+    local msg="$1"
+    local url="${NOTIFY_FEISHU_URL:-}"
+    if [ -z "${url}" ]; then
+        echo "[send-notification] ERROR: NOTIFY_FEISHU_URL not set" >&2
+        return 1
+    fi
+    local escaped_msg
+    escaped_msg=$(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null || printf '%s' "${msg}" | sed 's/"/\\"/g')
+    local payload
+    if [ -n "${NOTIFY_FEISHU_SECRET:-}" ]; then
+        local timestamp
+        timestamp=$(date +%s)
+        local sign_str="${timestamp}\n${NOTIFY_FEISHU_SECRET}"
+        local sign
+        sign=$(printf '%b' "${sign_str}" | openssl dgst -sha256 -hmac "${NOTIFY_FEISHU_SECRET}" -binary | base64)
+        payload="{\"timestamp\":\"${timestamp}\",\"sign\":\"${sign}\",\"msg_type\":\"text\",\"content\":{\"text\":\"${escaped_msg}\"}}"
+    else
+        payload="{\"msg_type\":\"text\",\"content\":{\"text\":\"${escaped_msg}\"}}"
+    fi
+    curl -sS -X POST -H "Content-Type: application/json" -d "${payload}" "${url}" >/dev/null 2>&1 || true
+}
+
+_notify_wecom() {
+    local msg="$1"
+    local url="${NOTIFY_WECOM_URL:-}"
+    if [ -z "${url}" ]; then
+        echo "[send-notification] ERROR: NOTIFY_WECOM_URL not set" >&2
+        return 1
+    fi
+    local escaped_msg
+    escaped_msg=$(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null || printf '%s' "${msg}" | sed 's/"/\\"/g')
+    curl -sS -X POST -H "Content-Type: application/json" \
+        -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"${escaped_msg}\"}}" \
+        "${url}" >/dev/null 2>&1 || true
+}
+
 _notify_webhook() {
     local msg="$1"
     local url="${CC_WEBHOOK_URL:-}"
@@ -156,6 +197,8 @@ send_notify() {
         slack)     _notify_slack "${msg}" ;;
         telegram)  _notify_telegram "${msg}" ;;
         discord)   _notify_discord "${msg}" ;;
+        feishu)    _notify_feishu "${msg}" ;;
+        wecom)     _notify_wecom "${msg}" ;;
         bark)      _notify_bark "${msg}" ;;
         webhook)   _notify_webhook "${msg}" ;;
         command)   _notify_command "${msg}" ;;

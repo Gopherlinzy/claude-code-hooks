@@ -3,3 +3,10 @@
 CC_NOTIFY_TARGET="your_chat_id_here"
 CC_WAIT_NOTIFY_SECONDS=30
 CC_NOTIFY_CHANNEL="feishu"
+
+# Feishu (飞书) webhook notification
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token-here
+# NOTIFY_FEISHU_SECRET=your-optional-secret-here
+
+# WeCom (企业微信) webhook notification
+# NOTIFY_WECOM_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-key-here
