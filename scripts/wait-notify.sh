@@ -68,8 +68,8 @@ if command -v jq &>/dev/null && [ -n "${STDIN_JSON}" ]; then
     SESSION_ID="$(echo "${STDIN_JSON}" | jq -r '.session_id // empty' 2>/dev/null || true)"
     TOOL_NAME="$(echo "${STDIN_JSON}" | jq -r '.tool_name // empty' 2>/dev/null || true)"
     HOOK_EVENT="$(echo "${STDIN_JSON}" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
-    # 尝试提取命令（Bash 工具）或文件路径（Write/Edit 工具）
-    TOOL_INPUT_CMD="$(echo "${STDIN_JSON}" | jq -r '.tool_input.command // .tool_input.file_path // .tool_input.path // empty' 2>/dev/null || true)"
+    # 尝试提取命令（Bash）、文件路径（Write/Edit）、或问题内容（AskUserQuestion 等）
+    TOOL_INPUT_CMD="$(echo "${STDIN_JSON}" | jq -r '.tool_input.command // .tool_input.file_path // .tool_input.path // .tool_input.question // .tool_input.text // .tool_input.content // (.tool_input | tostring | if length > 200 then .[:200] + "..." else . end) // empty' 2>/dev/null || true)"
 fi
 # python3 fallback when jq unavailable
 if [ -z "${SESSION_ID:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
@@ -105,7 +105,11 @@ import sys, json
 try:
     d = json.load(sys.stdin)
     ti = d.get('tool_input') or {}
-    print(ti.get('command') or ti.get('file_path') or ti.get('path') or '')
+    if isinstance(ti, str):
+        print(ti[:200])
+    else:
+        v = ti.get('command') or ti.get('file_path') or ti.get('path') or ti.get('question') or ti.get('text') or ti.get('content') or str(ti)[:200]
+        print(v or '')
 except: pass
 " 2>/dev/null || true)"
 fi
