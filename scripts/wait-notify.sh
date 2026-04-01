@@ -369,11 +369,11 @@ except:
     fi
 
     NOTIFY_MSG="⏰ Claude Code 等待你操作已超 ${WAIT_SECONDS} 秒！
+🆔 Session: ${SESSION_SHORT}
 📌 类型: ${EVENT_LABEL}
 🔧 工具: ${D_TOOL:-未知}
 💻 内容:
 ${FORMATTED_INPUT}
-🆔 Session: ${SESSION_SHORT}
 
 👉 请回到终端完成操作"
 
