@@ -141,7 +141,7 @@ _PROGRESS_SUFFIX='
 每完成一个步骤：
 1. 将该步骤的 [ ] 改为 [x]
 2. 执行对应的验证命令（如 test/lint/build/grep）并将结果记录到 .claude-progress.md 该步骤下方
-3. 若当前目录为 git 仓库，执行 git add -A && git commit -m "[TaskID] Step N: 简述" 提交该原子变更
+3. 若当前目录为 git 仓库，执行 git add -A -- . ':!.env*' ':!*.key' ':!*.pem' ':!*secret*' && git commit -m "[TaskID] Step N: 简述" 提交该原子变更
 4. 更新"当前状态"行
 遇到错误时，在 ## Errors 段落记录错误信息和尝试的修复方案。
 全部完成后，将状态更新为 ✅ 完成，并在 ## Summary 段落写入变更清单。

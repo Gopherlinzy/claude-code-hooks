@@ -45,11 +45,11 @@ fi
 BASENAME=$(basename "${FILE_PATH}")
 case "${BASENAME}" in
     *_gen.go|*.pb.go|*.pb.validate.go)
-        echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"⛔ 这是自动生成的文件（gen/pb），直接读取会浪费上下文。请改读对应的接口定义文件（如 domain/entity/ 或 .proto 文件）。"}'
+        echo '{"decision":"deny","reason":"⛔ 这是自动生成的文件（gen/pb），直接读取会浪费上下文。请改读对应的接口定义文件（如 domain/entity/ 或 .proto 文件）。"}'
         exit 0
         ;;
     *.min.js|*.min.css)
-        echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"⛔ 这是压缩后的前端资源文件，读取无意义。请读取源文件。"}'
+        echo '{"decision":"deny","reason":"⛔ 这是压缩后的前端资源文件，读取无意义。请读取源文件。"}'
         exit 0
         ;;
 esac
@@ -57,7 +57,7 @@ esac
 # === 规则 2：拦截噪音目录 ===
 case "${FILE_PATH}" in
     */vendor/*|*/node_modules/*|*/dist/*|*/.git/*)
-        echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"⛔ 此文件位于噪音目录（vendor/node_modules/dist/.git），不应直接读取。请读取项目源代码。"}'
+        echo '{"decision":"deny","reason":"⛔ 此文件位于噪音目录（vendor/node_modules/dist/.git），不应直接读取。请读取项目源代码。"}'
         exit 0
         ;;
 esac

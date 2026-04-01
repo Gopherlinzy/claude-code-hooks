@@ -1,46 +1,12 @@
 # Claude Code Hook Notification Config
-# =============================================
-#
-# CC_NOTIFY_BACKEND controls how notifications are delivered:
-#   auto         — Discover ALL configured backends, broadcast to all (default)
-#   feishu,slack — Explicit comma-separated list, broadcast to all listed
-#   feishu       — Single backend only
-#
-CC_NOTIFY_BACKEND=auto
-
-# Wait timeout: seconds before sending "waiting for your action" notification
+# Used by wait-notify.sh and cancel-wait.sh
+CC_NOTIFY_TARGET="your_chat_id_here"
 CC_WAIT_NOTIFY_SECONDS=30
+CC_NOTIFY_CHANNEL="feishu"
 
-# --- OpenClaw backend ---
-# CC_NOTIFY_TARGET=user:ou_xxxxx
-# CC_NOTIFY_CHANNEL=feishu
+# Feishu (飞书) webhook notification
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/your-token-here
+# NOTIFY_FEISHU_SECRET=your-optional-secret-here
 
-# --- Feishu / Lark ---
-# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-# NOTIFY_FEISHU_SECRET=your_sign_secret  # optional, for signed webhooks
-
-# --- WeCom / 企业微信 ---
-# NOTIFY_WECOM_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
-
-# --- Slack ---
-# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
-
-# --- Telegram ---
-# CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
-# CC_TELEGRAM_CHAT_ID=your_chat_id
-
-# --- Discord ---
-# CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/yyy
-
-# --- Bark (iOS push) ---
-# CC_BARK_URL=https://api.day.app/YOUR_KEY
-# CC_BARK_TITLE=Claude Code
-
-# --- Generic Webhook ---
-# CC_WEBHOOK_URL=https://your-endpoint.com/notify
-# CC_WEBHOOK_METHOD=POST
-# CC_WEBHOOK_CONTENT_TYPE=application/json
-# CC_WEBHOOK_BODY_TEMPLATE={"text": "__MESSAGE__"}
-
-# --- Custom Command ---
-# CC_NOTIFY_COMMAND=notify-send "Claude Code"
+# WeCom (企业微信) webhook notification
+# NOTIFY_WECOM_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-key-here

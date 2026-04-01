@@ -80,20 +80,20 @@ if [ -z "${TASK_NAME:-}" ]; then
     for session_file in ~/.claude/projects/*/sessions/*.json; do
         [ -f "${session_file}" ] || continue
         file_session_id="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${session_file}'))
+    d = json.load(sys.stdin)
     print(d.get('session_id') or d.get('id') or '')
 except: pass
-" 2>/dev/null || true)"
+" < "${session_file}" 2>/dev/null || true)"
         if [ "${file_session_id}" = "${TASK_ID}" ]; then
             TASK_NAME="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${session_file}'))
+    d = json.load(sys.stdin)
     print(d.get('name') or d.get('session_name') or '')
 except: pass
-" 2>/dev/null || true)"
+" < "${session_file}" 2>/dev/null || true)"
             break
         fi
     done
@@ -114,7 +114,7 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DONE_DIR="/tmp/cchooks"
 # 锁文件按 session_id 隔离，避免并发冲突
 LOCK_FILE="${HOOK_DIR}/.hook-lock-${TASK_ID_SHORT}"
-LOCK_TTL=60   # 秒；超过此时间的锁视为过期
+LOCK_TTL=300   # 秒；超过此时间的锁视为过期（防 /resume 重复通知）
 
 # === 确保输出目录存在 ===
 mkdir -p "${DONE_DIR}"
@@ -158,8 +158,7 @@ else
     _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"notify-openclaw\",\"session_id\":\"${TASK_ID_SHORT}\",\"name\":\"${TASK_NAME}\",\"stop_reason\":\"${STOP_REASON}\",\"event\":\"stop\"}"
 fi
 
-# === 清理锁文件 ===
-rm -f "${LOCK_FILE}"
+# === 锁文件保留至自然过期（TTL=300s），不主动删除，防止 /resume 重复触发 ===
 
 # === 信号通道 1：唤醒 OpenClaw 本地网关（仅限 localhost）===
 # CC_GATEWAY_PORT 从 notify.conf 读取，未配置则跳过
@@ -201,6 +200,12 @@ NOTIFY_MSG="🤖 Claude Code 任务完成！
 📦 结果文件: ${DONE_FILE}"
 
 send_notify "${NOTIFY_MSG}"
+
+# === 异步触发孤儿清理（fire-and-forget）===
+_REAPER="${SCRIPT_DIR}/reap-orphans.sh"
+if [ -x "${_REAPER}" ]; then
+    (bash "${_REAPER}" &>/dev/null &)
+fi
 
 # 始终以 0 退出，不影响 Claude Code 主进程
 exit 0

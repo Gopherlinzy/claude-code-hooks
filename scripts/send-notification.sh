@@ -81,6 +81,7 @@ _notify_slack() {
     fi
     curl -s -X POST "${url}" \
         -H 'Content-Type: application/json' \
+        --connect-timeout 3 --max-time 8 \
         -d "{\"text\": $(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
         >/dev/null 2>&1 || return 1
 }
@@ -95,6 +96,7 @@ _notify_telegram() {
     fi
     curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" \
         -H 'Content-Type: application/json' \
+        --connect-timeout 3 --max-time 8 \
         -d "{\"chat_id\": \"${chat_id}\", \"text\": $(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'), \"parse_mode\": \"Markdown\"}" \
         >/dev/null 2>&1 || return 1
 }
@@ -108,6 +110,7 @@ _notify_discord() {
     fi
     curl -s -X POST "${url}" \
         -H 'Content-Type: application/json' \
+        --connect-timeout 3 --max-time 8 \
         -d "{\"content\": $(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
         >/dev/null 2>&1 || return 1
 }
@@ -123,7 +126,7 @@ _notify_bark() {
     local encoded_title encoded_msg
     encoded_title=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${title}'))" 2>/dev/null || echo "${title}")
     encoded_msg=$(printf '%s' "${msg}" | python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.stdin.read()))" 2>/dev/null || echo "${msg}")
-    curl -s "${url}/${encoded_title}/${encoded_msg}" >/dev/null 2>&1 || return 1
+    curl -s "${url}/${encoded_title}/${encoded_msg}" --connect-timeout 3 --max-time 8 >/dev/null 2>&1 || return 1
 }
 
 _notify_feishu() {
@@ -146,7 +149,7 @@ _notify_feishu() {
     else
         payload="{\"msg_type\":\"text\",\"content\":{\"text\":\"${escaped_msg}\"}}"
     fi
-    curl -sS -X POST -H "Content-Type: application/json" -d "${payload}" "${url}" >/dev/null 2>&1 || return 1
+    curl -sS -X POST -H "Content-Type: application/json" --connect-timeout 3 --max-time 8 -d "${payload}" "${url}" >/dev/null 2>&1 || return 1
 }
 
 _notify_wecom() {
@@ -159,6 +162,7 @@ _notify_wecom() {
     local escaped_msg
     escaped_msg=$(printf '%s' "${msg}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null || printf '%s' "${msg}" | sed 's/"/\\"/g')
     curl -sS -X POST -H "Content-Type: application/json" \
+        --connect-timeout 3 --max-time 8 \
         -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"${escaped_msg}\"}}" \
         "${url}" >/dev/null 2>&1 || return 1
 }
@@ -178,6 +182,7 @@ _notify_webhook() {
     local body="${body_template//__MESSAGE__/${escaped_msg}}"
     curl -s -X "${method}" "${url}" \
         -H "Content-Type: ${content_type}" \
+        --connect-timeout 3 --max-time 8 \
         -d "${body}" \
         >/dev/null 2>&1 || return 1
 }

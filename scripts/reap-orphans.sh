@@ -24,8 +24,8 @@ for meta in "${META_DIR}"/*.meta; do
         continue
     fi
 
-    PID=$(python3 -c "import json; print(json.load(open('$meta')).get('pid', 0))" 2>/dev/null || echo 0)
-    START=$(python3 -c "import json; print(json.load(open('$meta')).get('start_epoch', 0))" 2>/dev/null || echo 0)
+    PID=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('pid', 0))" < "$meta" 2>/dev/null || echo 0)
+    START=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('start_epoch', 0))" < "$meta" 2>/dev/null || echo 0)
     [ "$PID" -eq 0 ] && continue
     [ "$START" -eq 0 ] && continue
     ELAPSED=$((NOW - START))
@@ -43,6 +43,32 @@ for meta in "${META_DIR}"/*.meta; do
     if [ "$ELAPSED" -gt "$TIMEOUT_SEC" ] && ! kill -0 "$PID" 2>/dev/null; then
         rm -f "$meta"
     fi
+done
+
+# === 清理过期的 .done 文件（7天以上）===
+_DONE_CLEANED=$(find "${META_DIR}" -name "*.done" -mtime +7 -delete -print 2>/dev/null | wc -l | tr -d ' ')
+[ "${_DONE_CLEANED:-0}" -gt 0 ] && echo "[reaper] Cleaned ${_DONE_CLEANED} expired .done file(s)"
+
+# === 清理过期的 .meta 文件（无进程存活且超过7天）===
+for _old_meta in $(find "${META_DIR}" -name "*.meta" -mtime +7 2>/dev/null); do
+    [ -f "${_old_meta}" ] || continue
+    _old_pid=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('pid',0))" < "${_old_meta}" 2>/dev/null || echo 0)
+    if [ "${_old_pid}" -eq 0 ] || ! kill -0 "${_old_pid}" 2>/dev/null; then
+        rm -f "${_old_meta}"
+    fi
+done
+
+# === 清理孤儿 worktrees（best-effort，覆盖常用路径）===
+for wt_dir in ~/.openclaw/workspace-main/.worktrees ~/projects/*/.worktrees; do
+    [ -d "${wt_dir}" ] || continue
+    _repo_dir="$(dirname "${wt_dir}")"
+    # 先清理已失效的 worktree 引用
+    git -C "${_repo_dir}" worktree prune 2>/dev/null || true
+    # 用 git worktree remove 正确清理（含引用），失败再 fallback rm
+    for _wt in $(find "${wt_dir}" -maxdepth 1 -type d -name "wt-*" -mtime +7 2>/dev/null); do
+        git -C "${_repo_dir}" worktree remove --force "${_wt}" 2>/dev/null \
+            || rm -rf "${_wt}" 2>/dev/null || true
+    done
 done
 
 [ "$REAPED" -gt 0 ] && echo "[reaper] Reaped $REAPED orphan(s)" || echo "[reaper] No orphans found"

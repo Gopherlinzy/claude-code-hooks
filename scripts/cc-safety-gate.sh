@@ -39,12 +39,14 @@ fi
 
 # === 黑名单模式 ===
 BLACKLIST_PATTERNS=(
-    'rm -rf /'
+    'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)*/($|\s|\*)'
+    'rm\s+--recursive\s+--force\s+/'
     'rm -rf ~'
     'sudo '
     'chmod 777'
     'curl[[:space:]].*\|[[:space:]]*(ba)?sh'
     'wget[[:space:]].*\|[[:space:]]*(ba)?sh'
+    'curl[[:space:]].*>[[:space:]]*/tmp/.*&&.*sh'
     'mkfs'
     'dd if='
     '> /etc/'

@@ -63,6 +63,8 @@ SESSION_ID=""
 TOOL_NAME=""
 TOOL_INPUT_CMD=""
 HOOK_EVENT=""
+NOTIFY_MESSAGE=""
+NOTIFY_TYPE=""
 
 if command -v jq &>/dev/null && [ -n "${STDIN_JSON}" ]; then
     SESSION_ID="$(echo "${STDIN_JSON}" | jq -r '.session_id // empty' 2>/dev/null || true)"
@@ -70,6 +72,8 @@ if command -v jq &>/dev/null && [ -n "${STDIN_JSON}" ]; then
     HOOK_EVENT="$(echo "${STDIN_JSON}" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
     # 尝试提取命令（Bash）、文件路径（Write/Edit）、或问题内容（AskUserQuestion 等）
     TOOL_INPUT_CMD="$(echo "${STDIN_JSON}" | jq -r '.tool_input.command // .tool_input.file_path // .tool_input.path // .tool_input.question // .tool_input.text // .tool_input.content // (.tool_input | tostring | if length > 200 then .[:200] + "..." else . end) // empty' 2>/dev/null || true)"
+    NOTIFY_MESSAGE="$(echo "${STDIN_JSON}" | jq -r '.message // empty' 2>/dev/null || true)"
+    NOTIFY_TYPE="$(echo "${STDIN_JSON}" | jq -r '.notification_type // empty' 2>/dev/null || true)"
 fi
 # python3 fallback when jq unavailable
 if [ -z "${SESSION_ID:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
@@ -110,6 +114,26 @@ try:
     else:
         v = ti.get('command') or ti.get('file_path') or ti.get('path') or ti.get('question') or ti.get('text') or ti.get('content') or str(ti)[:200]
         print(v or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+# python3 fallback for NOTIFY_MESSAGE
+if [ -z "${NOTIFY_MESSAGE:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    NOTIFY_MESSAGE="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('message') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+# python3 fallback for NOTIFY_TYPE
+if [ -z "${NOTIFY_TYPE:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    NOTIFY_TYPE="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('notification_type') or '')
 except: pass
 " 2>/dev/null || true)"
 fi
@@ -157,6 +181,30 @@ PID_FILE="${MARKER_DIR}/${SESSION_SHORT}.pid"
 # === 并发计数文件 ===
 COUNTER_FILE="${MARKER_DIR}/${SESSION_SHORT}.counter"
 
+# === 原子计数器锁函数（mkdir + stale 检测 + 3 次重试）===
+_counter_lock() {
+    local lock_dir="${MARKER_DIR}/${SESSION_SHORT}.counter.lock"
+    local i
+    for i in 1 2 3; do
+        if mkdir "${lock_dir}" 2>/dev/null; then
+            echo $$ > "${lock_dir}/owner" 2>/dev/null
+            return 0
+        fi
+        # Stale lock detection: owner process gone?
+        local owner_pid
+        owner_pid=$(cat "${lock_dir}/owner" 2>/dev/null || echo "")
+        if [ -n "${owner_pid}" ] && ! kill -0 "${owner_pid}" 2>/dev/null; then
+            rm -rf "${lock_dir}" 2>/dev/null || true
+            continue
+        fi
+        sleep 0.05
+    done
+    return 1
+}
+_counter_unlock() {
+    rm -rf "${MARKER_DIR}/${SESSION_SHORT}.counter.lock" 2>/dev/null || true
+}
+
 # === 死循环防护：检查当前活跃定时器数 ===
 _active_count=0
 if [ -f "${COUNTER_FILE}" ]; then
@@ -173,6 +221,25 @@ if [ -f "${COOLDOWN_FILE}" ]; then
     _cd_ts=$(cat "${COOLDOWN_FILE}" 2>/dev/null || echo "0")
     _now_ts=$(date +%s)
     if [ $(( _now_ts - _cd_ts )) -lt "${GLOBAL_COOLDOWN_SECONDS}" ]; then
+        # 冷却期内 PermissionRequest 升级 detail（修复乱序问题）
+        if [ "${HOOK_EVENT}" = "PermissionRequest" ] && [ -n "${TOOL_NAME:-}" ]; then
+            _UPGRADE_DETAIL="${MARKER_DIR}/${SESSION_SHORT}.detail"
+            if [ -f "${_UPGRADE_DETAIL}" ]; then
+                cat > "${_UPGRADE_DETAIL}" <<EOF
+{
+  "session_id": "${SESSION_ID}",
+  "session_short": "${SESSION_SHORT}",
+  "tool_name": "${TOOL_NAME}",
+  "tool_input": $(printf '%s' "${TOOL_INPUT_CMD}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
+  "tool_input_raw": ${TOOL_INPUT_RAW:-null},
+  "hook_event": "${HOOK_EVENT}",
+  "notify_message": $(printf '%s' "${NOTIFY_MESSAGE}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
+  "notify_type": "${NOTIFY_TYPE}",
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+EOF
+            fi
+        fi
         exit 0
     fi
 fi
@@ -191,14 +258,28 @@ if [ -f "${PID_FILE}" ]; then
     rm -f "${PID_FILE}"
     # 递减计数器（旧 timer 被杀，其 subshell 不会自行递减）
     if [ -f "${COUNTER_FILE}" ]; then
-        _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
-        _cnt=$(( _cnt - 1 ))
-        if [ "${_cnt}" -le 0 ]; then
-            rm -f "${COUNTER_FILE}"
-            _active_count=0
+        if _counter_lock; then
+            _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+            _cnt=$(( _cnt - 1 ))
+            if [ "${_cnt}" -le 0 ]; then
+                rm -f "${COUNTER_FILE}"
+                _active_count=0
+            else
+                echo "${_cnt}" > "${COUNTER_FILE}"
+                _active_count="${_cnt}"
+            fi
+            _counter_unlock
         else
-            echo "${_cnt}" > "${COUNTER_FILE}"
-            _active_count="${_cnt}"
+            # Fallback: 无锁操作（宁可 TOCTOU 也不能漏计）
+            _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+            _cnt=$(( _cnt - 1 ))
+            if [ "${_cnt}" -le 0 ]; then
+                rm -f "${COUNTER_FILE}"
+                _active_count=0
+            else
+                echo "${_cnt}" > "${COUNTER_FILE}"
+                _active_count="${_cnt}"
+            fi
         fi
     fi
 fi
@@ -229,6 +310,8 @@ cat > "${DETAIL_FILE}" <<EOF
   "tool_input": $(printf '%s' "${TOOL_INPUT_CMD}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
   "tool_input_raw": ${TOOL_INPUT_RAW:-null},
   "hook_event": "${HOOK_EVENT}",
+  "notify_message": $(printf '%s' "${NOTIFY_MESSAGE}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
+  "notify_type": "${NOTIFY_TYPE}",
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
@@ -265,57 +348,71 @@ fi
     D_INPUT=""
     D_INPUT_RAW=""
     D_EVENT=""
+    D_NOTIFY_TYPE=""
     if [ -f "${DETAIL_FILE}" ] && command -v jq &>/dev/null; then
         D_TOOL="$(jq -r '.tool_name // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_INPUT="$(jq -r '.tool_input // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_INPUT_RAW="$(jq -c '.tool_input_raw // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_EVENT="$(jq -r '.hook_event // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
+        D_NOTIFY_TYPE="$(jq -r '.notify_type // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
-    # python3 fallback when jq unavailable
+    # python3 fallback when jq unavailable (stdin redirect for Windows compat)
     if [ -z "${D_TOOL:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
         D_TOOL="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${DETAIL_FILE}'))
+    d = json.load(sys.stdin)
     print(d.get('tool_name') or '')
 except: pass
-" 2>/dev/null || true)"
+" < "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
     if [ -z "${D_INPUT:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
         D_INPUT="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${DETAIL_FILE}'))
+    d = json.load(sys.stdin)
     print(d.get('tool_input') or '')
 except: pass
-" 2>/dev/null || true)"
+" < "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
     if [ -z "${D_INPUT_RAW:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
         D_INPUT_RAW="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${DETAIL_FILE}'))
+    d = json.load(sys.stdin)
     raw = d.get('tool_input_raw')
     if raw is not None:
         print(json.dumps(raw, ensure_ascii=False))
 except: pass
-" 2>/dev/null || true)"
+" < "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
     if [ -z "${D_EVENT:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
         D_EVENT="$(python3 -c "
-import json
+import json, sys
 try:
-    d = json.load(open('${DETAIL_FILE}'))
+    d = json.load(sys.stdin)
     print(d.get('hook_event') or '')
 except: pass
-" 2>/dev/null || true)"
+" < "${DETAIL_FILE}" 2>/dev/null || true)"
+    fi
+    if [ -z "${D_NOTIFY_TYPE:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
+        D_NOTIFY_TYPE="$(python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d.get('notify_type') or '')
+except: pass
+" < "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
 
     # 构建消息内容
     EVENT_LABEL="权限审批"
-    if [ "${D_EVENT}" = "Notification" ]; then
+    # permission_prompt 类型的 Notification 也归类为"权限审批"
+    if [ "${D_EVENT}" = "Notification" ] && [ "${D_NOTIFY_TYPE}" != "permission_prompt" ]; then
         EVENT_LABEL="通知确认"
     fi
+    # Notification 路径无 tool_name 时用 notification_type 填充
+    if [ -z "${D_TOOL:-}" ] && [ -n "${D_NOTIFY_TYPE:-}" ]; then D_TOOL="${D_NOTIFY_TYPE}"; fi
 
     # === 智能格式化 tool_input（将 JSON 结构化为可读文本）===
     # 优先使用 tool_input_raw（原始 JSON 对象），fallback 到 tool_input（字符串摘要）
@@ -384,19 +481,34 @@ ${FORMATTED_INPUT}
 
     # 清理标记和详情文件
     rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
-    # 递减并发计数
+    # 递减并发计数（内联原子锁，subshell 不继承函数）
     if [ -f "${COUNTER_FILE}" ]; then
-        _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
-        _cnt=$(( _cnt - 1 ))
-        [ "${_cnt}" -le 0 ] && rm -f "${COUNTER_FILE}" || echo "${_cnt}" > "${COUNTER_FILE}"
+        if mkdir "${MARKER_DIR}/${SESSION_SHORT}.counter.lock" 2>/dev/null; then
+            _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+            _cnt=$(( _cnt - 1 ))
+            [ "${_cnt}" -le 0 ] && rm -f "${COUNTER_FILE}" || echo "${_cnt}" > "${COUNTER_FILE}"
+            rmdir "${MARKER_DIR}/${SESSION_SHORT}.counter.lock" 2>/dev/null || true
+        else
+            # Fallback: 无锁操作
+            _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+            _cnt=$(( _cnt - 1 ))
+            [ "${_cnt}" -le 0 ] && rm -f "${COUNTER_FILE}" || echo "${_cnt}" > "${COUNTER_FILE}"
+        fi
     fi
 
 ) &>/dev/null &
 TIMER_PID=$!
 echo "${TIMER_PID}" > "${PID_FILE}" 2>/dev/null || true
-# 递增并发计数
-echo $(( _active_count + 1 )) > "${COUNTER_FILE}" 2>/dev/null || true
-disown
+# 递增并发计数（原子锁，失败 fallback 无锁写入）
+if _counter_lock; then
+    _active_count=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "0")
+    echo $(( _active_count + 1 )) > "${COUNTER_FILE}" 2>/dev/null || true
+    _counter_unlock
+else
+    _active_count=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "0")
+    echo $(( _active_count + 1 )) > "${COUNTER_FILE}" 2>/dev/null || true
+fi
+disown $TIMER_PID
 
 # hook 本身立即返回，不阻塞 CC 主流程
 exit 0
