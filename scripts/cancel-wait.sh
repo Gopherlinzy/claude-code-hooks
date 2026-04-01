@@ -79,6 +79,8 @@ if [ -f "${PID_FILE}" ]; then
 fi
 
 rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
+# 清理计数器和冷却文件（防止 circuit breaker 因 cancel 累积误触发）
+rm -f "${MARKER_DIR}/${SESSION_SHORT}.counter" "${MARKER_DIR}/${SESSION_SHORT}.cooldown" 2>/dev/null || true
 
 # 静默退出，不影响 CC 主流程
 exit 0

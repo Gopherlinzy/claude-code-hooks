@@ -189,6 +189,18 @@ if [ -f "${PID_FILE}" ]; then
         fi
     fi
     rm -f "${PID_FILE}"
+    # 递减计数器（旧 timer 被杀，其 subshell 不会自行递减）
+    if [ -f "${COUNTER_FILE}" ]; then
+        _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
+        _cnt=$(( _cnt - 1 ))
+        if [ "${_cnt}" -le 0 ]; then
+            rm -f "${COUNTER_FILE}"
+            _active_count=0
+        else
+            echo "${_cnt}" > "${COUNTER_FILE}"
+            _active_count="${_cnt}"
+        fi
+    fi
 fi
 
 # 去重：如果已有同 session 的等待标记且未过期，不重复启动
@@ -363,7 +375,7 @@ except:
 ${FORMATTED_INPUT}
 🆔 Session: ${SESSION_SHORT}
 
-👉 请回到终端完成操作（允许/拒绝/输入）"
+👉 请回到终端完成操作"
 
     # 发送通知（通过通用通知层）
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
