@@ -3,7 +3,13 @@
 // Usage: node select-modules.js
 // Output: JSON array of enabled module keys to stdout
 // Controls: ↑↓ navigate, Space toggle, Enter confirm, a toggle all
+//
+// TUI renders to /dev/tty (not stdout), so $() capture works correctly.
+// On Windows Git Bash, /dev/tty maps to Console but ANSI may be limited.
 'use strict';
+
+const fs = require('fs');
+const tty = require('tty');
 
 const MODULES = [
   { key: 'stop',   label: 'Stop notification',    desc: 'Notify when Claude Code task completes', script: 'cc-stop-hook.sh', on: true },
@@ -13,21 +19,33 @@ const MODULES = [
   { key: 'cancel', label: 'Cancel wait',           desc: 'Dismiss notification on user activity',  script: 'cancel-wait.sh', on: true },
 ];
 
-const stdin = process.stdin;
-const stdout = process.stdout;
+// ─── Setup TTY I/O (separate from stdout so $() capture works) ───
+let ttyIn, ttyOut;
 
-// Must have a TTY for interactive mode
-let ttyIn = stdin;
-let ttyOut = stdout;
+// Output: TUI renders to /dev/tty, final JSON goes to stdout (process.stdout)
+try {
+  const ttyWfd = fs.openSync('/dev/tty', 'w');
+  ttyOut = new tty.WriteStream(ttyWfd);
+} catch {
+  // Fallback: stderr if it's a TTY
+  if (process.stderr.isTTY) {
+    ttyOut = process.stderr;
+  } else {
+    // Truly headless — skip TUI, output all defaults
+    console.log(JSON.stringify(MODULES.map(m => m.key)));
+    process.exit(0);
+  }
+}
 
-if (!stdin.isTTY) {
+// Input: read keystrokes from /dev/tty (stdin may be pipe in curl|bash)
+if (process.stdin.isTTY) {
+  ttyIn = process.stdin;
+} else {
   try {
-    const fs = require('fs');
-    const fd = fs.openSync('/dev/tty', 'r');
-    ttyIn = new (require('tty').ReadStream)(fd);
-    ttyIn.setRawMode(true);
+    const ttyRfd = fs.openSync('/dev/tty', 'r');
+    ttyIn = new tty.ReadStream(ttyRfd);
   } catch {
-    // No TTY available — output all enabled (non-interactive fallback)
+    // No TTY for input — output all defaults
     console.log(JSON.stringify(MODULES.map(m => m.key)));
     process.exit(0);
   }
@@ -58,8 +76,15 @@ function render() {
 function finish() {
   ttyIn.setRawMode(false);
   ttyIn.pause();
+  // Clean up tty fds
+  if (ttyOut !== process.stdout && ttyOut !== process.stderr) {
+    try { ttyOut.end(); } catch {}
+  }
+  if (ttyIn !== process.stdin) {
+    try { ttyIn.destroy(); } catch {}
+  }
   const enabled = MODULES.filter(m => m.on).map(m => m.key);
-  // Output to stdout (not ttyOut) so bash can capture it
+  // Output to stdout (not ttyOut) — this is what $() captures
   console.log(JSON.stringify(enabled));
   process.exit(0);
 }
@@ -74,6 +99,7 @@ ttyIn.on('data', (key) => {
   // Ctrl+C
   if (key === '\x03') {
     ttyIn.setRawMode(false);
+    if (ttyIn !== process.stdin) try { ttyIn.destroy(); } catch {}
     process.exit(130);
   }
 
@@ -98,7 +124,7 @@ ttyIn.on('data', (key) => {
     return;
   }
 
-  // Arrow keys (escape sequences)
+  // Arrow keys (escape sequences) + vi keys
   if (key === '\x1b[A' || key === 'k') { // Up
     cursor = (cursor - 1 + MODULES.length) % MODULES.length;
     render();

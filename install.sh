@@ -280,7 +280,7 @@ cmd_status() {
   if [ -d "$INSTALL_DIR" ]; then
     ok "Installed at ${INSTALL_DIR}"
     local sh_count
-    sh_count=$(ls "${INSTALL_DIR}"/*.sh 2>/dev/null | wc -l | tr -d ' ')
+    sh_count=$(find "${INSTALL_DIR}" -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
     info "${sh_count} hook script(s) found"
   else
     err "Not installed (${INSTALL_DIR} does not exist)"
@@ -318,7 +318,7 @@ cmd_status() {
   fi
 
   local backup_count
-  backup_count=$(ls "${SETTINGS_FILE}.bak."* 2>/dev/null | wc -l | tr -d ' ')
+  backup_count=$(find "$(dirname "${SETTINGS_FILE}")" -maxdepth 1 -name 'settings.json.bak.*' 2>/dev/null | wc -l | tr -d ' ')
   info "${backup_count} backup(s) of settings.json found"
 }
 
@@ -510,7 +510,7 @@ run_install() {
   else
     _install_tmp="$(mktemp -d)"
     # shellcheck disable=SC2064
-    trap "rm -rf '${_install_tmp}'" EXIT
+    trap "rm -rf '${_install_tmp}'; release_lock 2>/dev/null" EXIT
     info "Cloning from GitHub..."
     git clone --depth 1 --quiet "$REPO_URL" "${_install_tmp}/repo"
     SRC_DIR="${_install_tmp}/repo/scripts"
@@ -563,7 +563,7 @@ run_install() {
     echo ""
     # 用 Node.js TUI 选择器（↑↓ 导航，空格切换，Enter 确认）
     local _selected
-    _selected=$(node "${INSTALL_DIR}/select-modules.js" 2>/dev/tty) || true
+    _selected=$(node "${INSTALL_DIR}/select-modules.js") || true
 
     if [ -n "$_selected" ]; then
       # 解析 JSON 数组，未选中的模块设为 false
