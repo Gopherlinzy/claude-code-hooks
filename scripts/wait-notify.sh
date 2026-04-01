@@ -7,6 +7,11 @@
 
 set -uo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
     local _jsonl_dir="${HOME}/.cchooks/logs"
@@ -65,6 +70,44 @@ if command -v jq &>/dev/null && [ -n "${STDIN_JSON}" ]; then
     HOOK_EVENT="$(echo "${STDIN_JSON}" | jq -r '.hook_event_name // empty' 2>/dev/null || true)"
     # 尝试提取命令（Bash 工具）或文件路径（Write/Edit 工具）
     TOOL_INPUT_CMD="$(echo "${STDIN_JSON}" | jq -r '.tool_input.command // .tool_input.file_path // .tool_input.path // empty' 2>/dev/null || true)"
+fi
+# python3 fallback when jq unavailable
+if [ -z "${SESSION_ID:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    SESSION_ID="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('session_id') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+if [ -z "${TOOL_NAME:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    TOOL_NAME="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('tool_name') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+if [ -z "${HOOK_EVENT:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    HOOK_EVENT="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('hook_event_name') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+if [ -z "${TOOL_INPUT_CMD:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    TOOL_INPUT_CMD="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    ti = d.get('tool_input') or {}
+    print(ti.get('command') or ti.get('file_path') or ti.get('path') or '')
+except: pass
+" 2>/dev/null || true)"
 fi
 
 SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
@@ -189,6 +232,34 @@ fi
         D_TOOL="$(jq -r '.tool_name // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_INPUT="$(jq -r '.tool_input // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_EVENT="$(jq -r '.hook_event // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
+    fi
+    # python3 fallback when jq unavailable
+    if [ -z "${D_TOOL:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
+        D_TOOL="$(python3 -c "
+import json
+try:
+    d = json.load(open('${DETAIL_FILE}'))
+    print(d.get('tool_name') or '')
+except: pass
+" 2>/dev/null || true)"
+    fi
+    if [ -z "${D_INPUT:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
+        D_INPUT="$(python3 -c "
+import json
+try:
+    d = json.load(open('${DETAIL_FILE}'))
+    print(d.get('tool_input') or '')
+except: pass
+" 2>/dev/null || true)"
+    fi
+    if [ -z "${D_EVENT:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
+        D_EVENT="$(python3 -c "
+import json
+try:
+    d = json.load(open('${DETAIL_FILE}'))
+    print(d.get('hook_event') or '')
+except: pass
+" 2>/dev/null || true)"
     fi
 
     # 构建消息内容

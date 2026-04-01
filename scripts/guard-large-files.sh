@@ -6,6 +6,11 @@
 
 set -uo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
     local _jsonl_dir="${HOME}/.cchooks/logs"
@@ -19,6 +24,17 @@ INPUT=$(cat)
 
 # === 提取文件路径（兼容 file_path 和 path 两种字段名）===
 FILE_PATH=$(echo "${INPUT}" | jq -r '.tool_input.file_path // .tool_input.path // .tool_input.filePath // empty' 2>/dev/null)
+# python3 fallback when jq unavailable
+if [ -z "${FILE_PATH:-}" ] && [ -n "${INPUT:-}" ]; then
+    FILE_PATH="$(echo "${INPUT}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    ti = d.get('tool_input') or {}
+    print(ti.get('file_path') or ti.get('path') or ti.get('filePath') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
 
 # 如果提取不到路径，直接放行
 if [ -z "${FILE_PATH}" ]; then

@@ -13,6 +13,11 @@
 
 set -uo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === Load config ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/notify.conf"

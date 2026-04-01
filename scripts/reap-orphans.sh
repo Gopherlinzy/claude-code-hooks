@@ -4,6 +4,11 @@
 
 set -euo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 TIMEOUT_SEC=${REAP_TIMEOUT:-1800}  # 默认 30 分钟
 META_DIR="/tmp/cchooks"
 NOW=$(date +%s)

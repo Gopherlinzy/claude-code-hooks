@@ -176,7 +176,7 @@ Add the following to your ~/.claude/settings.json under the "hooks" key:
   "hooks": {
     "Stop": [
       {
-        "matcher": "",
+        "matcher": "*",
         "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cc-stop-hook.sh"}]
       }
     ],
@@ -192,13 +192,13 @@ Add the following to your ~/.claude/settings.json under the "hooks" key:
     ],
     "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "*",
         "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cancel-wait.sh", "timeout": 3}]
       }
     ],
     "Notification": [
       {
-        "matcher": "",
+        "matcher": "*",
         "hooks": [{"type": "command", "command": "${INSTALL_DIR}/wait-notify.sh", "timeout": 5}]
       }
     ]

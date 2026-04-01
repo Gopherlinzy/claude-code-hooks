@@ -5,6 +5,11 @@
 # 从 stdin 读取 JSON 获取 session_id、stop_reason 等信息
 # 安全约束：Security best practices
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
     local _jsonl_dir="${HOME}/.cchooks/logs"
@@ -29,6 +34,25 @@ if command -v jq &>/dev/null && [ -n "${STDIN_JSON}" ]; then
     SESSION_ID="$(echo "${STDIN_JSON}" | jq -r '.session_id // empty' 2>/dev/null || true)"
     STOP_REASON="$(echo "${STDIN_JSON}" | jq -r '.stop_reason // empty' 2>/dev/null || true)"
 fi
+# python3 fallback when jq unavailable
+if [ -z "${SESSION_ID:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    SESSION_ID="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('session_id') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
+if [ -z "${STOP_REASON:-}" ] && [ -n "${STDIN_JSON:-}" ]; then
+    STOP_REASON="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('stop_reason') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
 
 # fallback：环境变量 > 默认值
 TASK_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
@@ -47,6 +71,29 @@ if command -v jq &>/dev/null; then
         file_session_id="$(jq -r '.session_id // .id // empty' "${session_file}" 2>/dev/null || true)"
         if [ "${file_session_id}" = "${TASK_ID}" ]; then
             TASK_NAME="$(jq -r '.name // .session_name // empty' "${session_file}" 2>/dev/null || true)"
+            break
+        fi
+    done
+fi
+# python3 fallback when jq unavailable
+if [ -z "${TASK_NAME:-}" ]; then
+    for session_file in ~/.claude/projects/*/sessions/*.json; do
+        [ -f "${session_file}" ] || continue
+        file_session_id="$(python3 -c "
+import json
+try:
+    d = json.load(open('${session_file}'))
+    print(d.get('session_id') or d.get('id') or '')
+except: pass
+" 2>/dev/null || true)"
+        if [ "${file_session_id}" = "${TASK_ID}" ]; then
+            TASK_NAME="$(python3 -c "
+import json
+try:
+    d = json.load(open('${session_file}'))
+    print(d.get('name') or d.get('session_name') or '')
+except: pass
+" 2>/dev/null || true)"
             break
         fi
     done

@@ -16,6 +16,11 @@
 
 set -euo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
     local _jsonl_dir="${HOME}/.cchooks/logs"

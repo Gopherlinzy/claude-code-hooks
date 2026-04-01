@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
+if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+    python3() { PYTHONUTF8=1 python "$@"; }
+fi
+
 # === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
 _log_jsonl() {
     local _jsonl_dir="${HOME}/.cchooks/logs"
@@ -16,6 +21,16 @@ _log_jsonl() {
 # 读取 stdin JSON，提取命令
 INPUT="$(cat)"
 CMD="$(echo "${INPUT}" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
+# python3 fallback when jq unavailable
+if [ -z "${CMD:-}" ] && [ -n "${INPUT:-}" ]; then
+    CMD="$(echo "${INPUT}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print((d.get('tool_input') or {}).get('command') or '')
+except: pass
+" 2>/dev/null || true)"
+fi
 
 # 无命令则放行
 if [[ -z "${CMD}" ]]; then
@@ -28,8 +43,8 @@ BLACKLIST_PATTERNS=(
     'rm -rf ~'
     'sudo '
     'chmod 777'
-    'curl.*|.*sh'
-    'wget.*|.*sh'
+    'curl[[:space:]].*\|[[:space:]]*(ba)?sh'
+    'wget[[:space:]].*\|[[:space:]]*(ba)?sh'
     'mkfs'
     'dd if='
     '> /etc/'
