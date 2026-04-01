@@ -76,6 +76,9 @@ function render() {
 function finish() {
   ttyIn.setRawMode(false);
   ttyIn.pause();
+  const enabled = MODULES.filter(m => m.on).map(m => m.key);
+  // Visual confirmation on ttyOut
+  ttyOut.write(`\n  \x1b[32m✔\x1b[0m Selected: ${enabled.join(', ') || 'none'}\n\n`);
   // Clean up tty fds
   if (ttyOut !== process.stdout && ttyOut !== process.stderr) {
     try { ttyOut.end(); } catch {}
@@ -83,7 +86,6 @@ function finish() {
   if (ttyIn !== process.stdin) {
     try { ttyIn.destroy(); } catch {}
   }
-  const enabled = MODULES.filter(m => m.on).map(m => m.key);
   // Output to stdout (not ttyOut) — this is what $() captures
   console.log(JSON.stringify(enabled));
   process.exit(0);

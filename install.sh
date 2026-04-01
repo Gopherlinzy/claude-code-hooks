@@ -128,26 +128,44 @@ rollback_settings() {
   fi
 }
 
-# ERR 信号处理：提示回滚
+# ─── 全局清理资源追踪 & 统一 trap 管理 ───
+_CLEANUP_DIRS=()
+_HAD_ERROR=false
 _ERROR_HANDLED=false
-on_error() {
+
+_on_error_handler() {
   [ "$_ERROR_HANDLED" = true ] && return
   _ERROR_HANDLED=true
   echo ""
   err "An error occurred. Installation may be incomplete."
-  release_lock
-  if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+  if [ -n "${BACKUP_FILE:-}" ] && [ -f "$BACKUP_FILE" ]; then
     warn "Your settings.json backup: $BACKUP_FILE"
-    if [ "$NON_INTERACTIVE" = false ]; then
+    if [ "$NON_INTERACTIVE" = false ] && { true <&3; } 2>/dev/null; then
       echo -n "  Rollback settings.json to backup? [Y/n] "
       read -r _ROLLBACK_CHOICE <&3 || true
       if [[ ! "${_ROLLBACK_CHOICE:-}" =~ ^[Nn]$ ]]; then
         rollback_settings
       fi
+    else
+      warn "No interactive terminal — auto-rolling back."
+      rollback_settings
     fi
   fi
 }
-trap 'on_error' ERR
+
+cleanup_all() {
+  for d in "${_CLEANUP_DIRS[@]}"; do
+    rm -rf "$d" 2>/dev/null || true
+  done
+  release_lock
+  if [ "$_HAD_ERROR" = true ]; then
+    _on_error_handler
+  fi
+}
+
+trap '_HAD_ERROR=true' ERR
+trap 'cleanup_all' EXIT
+trap 'echo ""; warn "Interrupted."; _HAD_ERROR=true; exit 130' INT TERM
 
 # ─── 生成 hooks-patch.json（基于当前模块开关状态）───
 generate_hooks_patch() {
@@ -217,7 +235,7 @@ inject_hooks() {
     echo ""
     echo -e "  ${BOLD}Pending changes to ~/.claude/settings.json:${NC}"
     if command -v diff &>/dev/null && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
-      diff "$BACKUP_FILE" "$tmp_output" 2>/dev/null || true
+      diff -u "$BACKUP_FILE" "$tmp_output" 2>/dev/null | tail -n +3 | head -60 || true
     fi
     echo ""
     echo -n "  Apply these changes? [Y/n] "
@@ -310,9 +328,9 @@ cmd_status() {
   fi
 
   if [ -f "$CONF_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$CONF_FILE" 2>/dev/null || true
-    ok "notify.conf: channel=${CC_NOTIFY_CHANNEL:-unknown}"
+    local _conf_channel
+    _conf_channel=$(grep -m1 '^CC_NOTIFY_CHANNEL=' "$CONF_FILE" 2>/dev/null | sed 's/^[^=]*=//; s/^"//; s/"$//' || echo "unknown")
+    ok "notify.conf: channel=${_conf_channel:-unknown}"
   else
     warn "notify.conf not found"
   fi
@@ -338,7 +356,7 @@ cmd_update() {
   local _update_tmp
   _update_tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
-  trap "rm -rf '${_update_tmp}'; release_lock" EXIT
+  _CLEANUP_DIRS+=("${_update_tmp}")
 
   info "Fetching latest from GitHub..."
   git clone --depth 1 --quiet "$REPO_URL" "${_update_tmp}/repo"
@@ -510,7 +528,7 @@ run_install() {
   else
     _install_tmp="$(mktemp -d)"
     # shellcheck disable=SC2064
-    trap "rm -rf '${_install_tmp}'; release_lock 2>/dev/null" EXIT
+    _CLEANUP_DIRS+=("${_install_tmp}")
     info "Cloning from GitHub..."
     git clone --depth 1 --quiet "$REPO_URL" "${_install_tmp}/repo"
     SRC_DIR="${_install_tmp}/repo/scripts"
@@ -562,8 +580,20 @@ run_install() {
   if [ "$NON_INTERACTIVE" = false ] && [ -f "${INSTALL_DIR}/select-modules.js" ]; then
     echo ""
     # 用 Node.js TUI 选择器（↑↓ 导航，空格切换，Enter 确认）
-    local _selected
-    _selected=$(node "${INSTALL_DIR}/select-modules.js") || true
+    local _selected _select_rc=0
+    _selected=$(node "${INSTALL_DIR}/select-modules.js") || _select_rc=$?
+
+    if [ "$_select_rc" -eq 130 ]; then
+      # 用户按了 Ctrl+C
+      warn "Module selection cancelled."
+      echo -n "  Continue with all modules enabled? [Y/n] "
+      read -r _CONT <&3 || true
+      if [[ "${_CONT:-}" =~ ^[Nn]$ ]]; then
+        info "Installation cancelled."
+        exit 0
+      fi
+      _selected=""
+    fi
 
     if [ -n "$_selected" ]; then
       # 解析 JSON 数组，未选中的模块设为 false
@@ -722,13 +752,20 @@ CONF
   step 6 "Verifying installation..."
 
   local ERRORS=0
-  for script in cc-stop-hook.sh dispatch-claude.sh cc-safety-gate.sh \
+  for script in cc-stop-hook.sh cc-safety-gate.sh \
                 guard-large-files.sh wait-notify.sh cancel-wait.sh; do
     if [ -x "${INSTALL_DIR}/${script}" ]; then
       ok "${script}"
     else
       err "${script} — missing or not executable"
       ERRORS=$((ERRORS + 1))
+    fi
+  done
+
+  # 可选脚本（不计入 ERRORS）
+  for script in dispatch-claude.sh check-claude-status.sh reap-orphans.sh send-notification.sh generate-skill-index.sh; do
+    if [ -x "${INSTALL_DIR}/${script}" ]; then
+      ok "${script} (optional)"
     fi
   done
 
