@@ -32,6 +32,20 @@ SUBCMD=""
 PURGE=false
 NON_INTERACTIVE=false
 BACKUP_FILE=""
+
+# ─── 自动检测 stdin 是否为终端（curl|bash 模式下 stdin 是管道）───
+# fd3 作为统一的用户输入源：正常模式 → stdin，curl|bash 模式 → /dev/tty
+if [ -t 0 ]; then
+  # 正常终端模式：stdin 就是终端
+  exec 3<&0
+elif [ -c /dev/tty ]; then
+  # curl|bash 模式：stdin 被管道占用，用 /dev/tty 恢复交互
+  exec 3</dev/tty
+else
+  # 无终端可用（CI/Docker 等），强制非交互
+  NON_INTERACTIVE=true
+  exec 3</dev/null
+fi
 # 模块开关（默认全开）
 MODULE_STOP=true
 MODULE_SAFETY=true
@@ -126,7 +140,7 @@ on_error() {
     warn "Your settings.json backup: $BACKUP_FILE"
     if [ "$NON_INTERACTIVE" = false ]; then
       echo -n "  Rollback settings.json to backup? [Y/n] "
-      read -r _ROLLBACK_CHOICE || true
+      read -r _ROLLBACK_CHOICE <&3 || true
       if [[ ! "${_ROLLBACK_CHOICE:-}" =~ ^[Nn]$ ]]; then
         rollback_settings
       fi
@@ -207,7 +221,7 @@ inject_hooks() {
     fi
     echo ""
     echo -n "  Apply these changes? [Y/n] "
-    read -r _CONFIRM_INJ || true
+    read -r _CONFIRM_INJ <&3 || true
     if [[ "${_CONFIRM_INJ:-}" =~ ^[Nn]$ ]]; then
       rm -f "$tmp_output" "$patch_file"
       warn "Hooks injection skipped."
@@ -350,7 +364,7 @@ cmd_update() {
   # 重新注入 hooks
   if [ "$NON_INTERACTIVE" = false ]; then
     echo -n "  Re-inject hooks into settings.json? [Y/n] "
-    read -r _REINJECT || true
+    read -r _REINJECT <&3 || true
   fi
   if [ "$NON_INTERACTIVE" = true ] || [[ ! "${_REINJECT:-}" =~ ^[Nn]$ ]]; then
     inject_hooks
@@ -373,7 +387,7 @@ cmd_uninstall() {
 
   if [ "$NON_INTERACTIVE" = false ] && [ "$PURGE" = false ]; then
     echo -n "  Remove claude-code-hooks? [y/N] "
-    read -r _CONFIRM_UNINSTALL || true
+    read -r _CONFIRM_UNINSTALL <&3 || true
     if [[ ! "${_CONFIRM_UNINSTALL:-}" =~ ^[Yy]$ ]]; then
       info "Uninstall cancelled."
       return 0
@@ -548,7 +562,7 @@ run_install() {
     echo ""
     echo -e "  Enter numbers to ${RED}disable${NC} (comma-separated), or press Enter to keep all:"
     echo -n "  Disable: "
-    read -r _DISABLE_INPUT || true
+    read -r _DISABLE_INPUT <&3 || true
 
     if [ -n "${_DISABLE_INPUT:-}" ]; then
       IFS=',' read -ra _DISABLED_NUMS <<< "$_DISABLE_INPUT"
@@ -588,7 +602,7 @@ run_install() {
   if [ -f "$CONF_FILE" ] && [ "$NON_INTERACTIVE" = false ]; then
     echo -e "  Existing notify.conf found."
     echo -n "  Overwrite? [y/N] "
-    read -r _OVERWRITE || true
+    read -r _OVERWRITE <&3 || true
     if [[ ! "${_OVERWRITE:-}" =~ ^[Yy]$ ]]; then
       ok "Keeping existing notify.conf"
       SKIP_CONF=true
@@ -611,7 +625,7 @@ run_install() {
       echo "    5) discord"
       echo "    6) none    (skip notifications)"
       echo -n "  Choose [1-6, default=1]: "
-      read -r _CH_CHOICE || true
+      read -r _CH_CHOICE <&3 || true
       case "${_CH_CHOICE:-1}" in
         1) CC_CHANNEL="feishu" ;;
         2) CC_CHANNEL="wecom" ;;
@@ -631,7 +645,7 @@ run_install() {
           slack)    echo -n "  Slack webhook URL (https://hooks.slack.com/...): " ;;
           discord)  echo -n "  Discord webhook URL (https://discord.com/api/webhooks/...): " ;;
         esac
-        read -r WEBHOOK_URL || true
+        read -r WEBHOOK_URL <&3 || true
 
         # 询问通知目标 ID（可选，用于某些渠道）
         case "$CC_CHANNEL" in
@@ -642,17 +656,17 @@ run_install() {
           wecom)    CC_TARGET=""; echo "" ;;
         esac
         if [ "$CC_CHANNEL" != "wecom" ]; then
-          read -r CC_TARGET || true
+          read -r CC_TARGET <&3 || true
         fi
 
         echo -n "  Wait timeout before notification (seconds) [30]: "
-        read -r CC_TIMEOUT || true
+        read -r CC_TIMEOUT <&3 || true
         CC_TIMEOUT="${CC_TIMEOUT:-30}"
 
         # 可选连通性测试
         if [ -n "${WEBHOOK_URL:-}" ]; then
           echo -n "  Test webhook now? [Y/n] "
-          read -r _TEST_WH || true
+          read -r _TEST_WH <&3 || true
           if [[ ! "${_TEST_WH:-}" =~ ^[Nn]$ ]]; then
             validate_webhook "${WEBHOOK_URL:-}"
           fi
