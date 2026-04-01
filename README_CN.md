@@ -61,9 +61,75 @@ EOF
 chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
 ```
 
-注册到 `~/.claude/settings.json`：完整配置见 [README.md](README.md#3-register-hooks-in-claudesettingsjson)。
+注册到 `~/.claude/settings.json`：完整配置见 [README.md](README.md#2-register-hooks-in-claudesettingsjson)。
 
 > **注意**：所有 matcher 使用 `"*"`（匹配所有）。避免使用空字符串 `""`，其行为未定义，可能导致 hook 不触发。
+
+### 🪟 Windows 用户
+
+Windows 用户有两个选择：**WSL2**（完整功能）或 **Git Bash**（仅 hooks，有限制）。
+
+#### 方案 A：WSL2（推荐 — 完整功能）
+
+```powershell
+# PowerShell（管理员）— 安装 WSL2
+wsl --install -d Ubuntu
+```
+
+```bash
+# 在 WSL2 Ubuntu 内：
+sudo apt-get install -y nodejs jq python3 curl openssl
+npm install -g @anthropic-ai/claude-code
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from WSL2!"
+```
+
+#### 方案 B：Git Bash（仅 Hooks — 无需 jq）
+
+> **v1.3.1 起**，所有 hook 脚本内置了 `jq` 和 `python3` 的 Python 兼容层。如果你已经在 Git Bash 下运行 Claude Code，hooks 无需额外安装依赖即可工作。
+
+**前置条件：**
+- [Git for Windows](https://gitforwindows.org/)（含 Git Bash）
+- [Python 3.6+](https://www.python.org/downloads/)（安装时勾选"Add to PATH"）
+- Claude Code CLI 已在 Git Bash 下可用
+
+**安装：**
+```bash
+# 在 Git Bash 中：
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+mkdir -p ~/.claude/scripts/claude-hooks
+cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
+chmod +x ~/.claude/scripts/claude-hooks/*.sh
+```
+
+**配置通知：**
+```bash
+cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
+CC_NOTIFY_BACKEND=auto
+CC_WAIT_NOTIFY_SECONDS=30
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+EOF
+```
+
+**注册 hooks（`~/.claude/settings.json`）：**
+
+> ⚠️ **Windows 路径格式**：使用 `bash /c/Users/用户名/...` 正斜杠格式（Git Bash 风格），将 `用户名` 替换为你的 Windows 用户名。
+
+完整 settings.json 配置见 [README.md（英文版 Git Bash 段落）](README.md#option-b-git-bash-hooks-only--no-jq-required)。
+
+**测试：**
+```bash
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Git Bash!"
+```
+
+**Git Bash 已知限制：**
+- `jq` 不包含在 Git Bash 中 — 所有脚本自动回退到 Python 解析 JSON
+- `python3` 命令可能不存在 — 脚本自动检测并使用 `python`
+- `/tmp/` 路径映射与原生 Windows 进程不同 — 多会话场景下后台定时器可能不稳定
+- 任务派发（`dispatch-claude.sh`）和孤儿清理（`reap-orphans.sh`）建议在 WSL2 下使用
+
+> **总结**：Git Bash 适合**通知**（任务完成、飞书/Slack/Telegram 提醒）和**安全门**（危险命令拦截）。完整任务生命周期管理请用 WSL2。
 
 ## 架构图
 
@@ -141,6 +207,17 @@ CC_NOTIFY_BACKEND=feishu
 | `jq` | 推荐 | JSON 解析（缺失时优雅降级） |
 
 ## 更新日志
+
+### v1.3.1 (2026-04-01)
+
+**🪟 Windows Git Bash 兼容性**
+
+- **Python3 兼容层**：9 个 hook 脚本自动检测 `python`（当 `python3` 不存在时）
+- **jq 兼容层**：5 个依赖 jq 的脚本现在在 jq 不可用时自动回退到 Python 解析 JSON
+- **install.sh 修复**：matcher `""` → `"*"`（空字符串导致 hooks 静默不触发）
+- **安全门正则修复**：`curl.*|.*sh` 误杀合法命令 → 使用 POSIX `[[:space:]]` 兼容 macOS
+- **.gitattributes**：强制 `*.sh` 使用 LF 换行（防止 Windows 下 CRLF 报错）
+- **README**：新增 Windows Git Bash 安装指南
 
 ### v1.3.0 (2026-03-31)
 

@@ -73,9 +73,13 @@ echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN'
 ~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Linux!"
 ```
 
-### 🪟 Windows (WSL2 Required)
+### 🪟 Windows
 
-> **Why WSL2?** Claude Code CLI only supports macOS and Linux. There is no native Windows build — WSL2 is the only way to run it on Windows. This is a Claude Code limitation, not ours.
+Windows users have two options: **WSL2** (full functionality) or **Git Bash** (hooks only, limited).
+
+#### Option A: WSL2 (Recommended — Full Functionality)
+
+> WSL2 provides a complete Linux environment. Claude Code CLI + all hooks work exactly like native Linux.
 
 ```powershell
 # In PowerShell (Admin) — install WSL2 if needed
@@ -91,7 +95,142 @@ echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN'
 ~/.claude/scripts/claude-hooks/send-notification.sh "Hello from WSL2!"
 ```
 
-> **Windows notes:** All paths use Linux format inside WSL2 (`~/.claude/scripts/`). VS Code users: connect via `Remote - WSL` extension. `curl` in WSL2 can reach external webhooks normally.
+> **WSL2 notes:** All paths use Linux format (`~/.claude/scripts/`). VS Code users: connect via `Remote - WSL` extension. `curl` in WSL2 can reach external webhooks normally.
+
+#### Option B: Git Bash (Hooks Only — No jq Required)
+
+> **Since v1.3.1**, all hook scripts include built-in Python fallbacks for `jq` and `python3`. If you already have Claude Code running via Git Bash, the hooks now work without installing extra dependencies.
+
+**Prerequisites:**
+- [Git for Windows](https://gitforwindows.org/) (includes Git Bash)
+- [Python 3.6+](https://www.python.org/downloads/) (added to PATH during install)
+- Claude Code CLI already working in Git Bash
+
+**Install:**
+```bash
+# In Git Bash:
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+mkdir -p ~/.claude/scripts/claude-hooks
+cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
+chmod +x ~/.claude/scripts/claude-hooks/*.sh
+```
+
+**Configure notifications:**
+```bash
+cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
+CC_NOTIFY_BACKEND=auto
+CC_WAIT_NOTIFY_SECONDS=30
+
+# Feishu:
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+EOF
+```
+
+**Register hooks in `~/.claude/settings.json`:**
+
+> ⚠️ **Windows path format**: Use `bash /c/Users/USERNAME/...` with forward slashes (Git Bash style). Replace `USERNAME` with your actual Windows username.
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/cc-stop-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/guard-large-files.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/cc-safety-gate.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/wait-notify.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/wait-notify.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/cancel-wait.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/USERNAME/.claude/scripts/claude-hooks/cancel-wait.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Test:**
+```bash
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Git Bash!"
+```
+
+**Git Bash known limitations:**
+- `jq` is not included in Git Bash — all scripts auto-fallback to Python for JSON parsing
+- `python3` command may not exist — scripts auto-detect and use `python` instead
+- `/tmp/` path mapping differs between Git Bash and native Windows processes — background timers (`wait-notify.sh`) may be unreliable for multi-session scenarios
+- `nohup & disown` behavior is less reliable than on native Linux — permission timeout notifications may occasionally not fire if the Git Bash window is closed
+- Task dispatch (`dispatch-claude.sh`) and orphan reaping (`reap-orphans.sh`) work best in WSL2
+
+> **TL;DR:** Git Bash works well for **notifications** (stop hook, Feishu/Slack/Telegram alerts) and **safety gates** (dangerous command blocking). For full task lifecycle management (dispatch, progress tracking, orphan cleanup), use WSL2.
 
 ### Manual Install (Alternative)
 
@@ -525,6 +664,17 @@ Set `CC_GATEWAY_PORT` in `notify.conf` — if unset, the gateway wake call is sk
 `dispatch-claude.sh` writes prompts to a `mktemp` temporary file instead of embedding them in `nohup bash -c '...'`, eliminating quote-escaping bugs.
 
 ## Changelog
+
+### v1.3.1 (2026-04-01)
+
+**🪟 Windows Git Bash Compatibility**
+
+- **Python3 shim**: All 9 hook scripts now auto-detect `python` when `python3` is missing (Windows Git Bash)
+- **jq fallback**: 5 scripts that parse JSON via `jq` now fallback to Python when `jq` is unavailable — no extra dependencies needed on Git Bash
+- **install.sh**: Fixed matcher `""` → `"*"` (empty string caused hooks to silently never fire)
+- **cc-safety-gate.sh**: Fixed regex `curl.*|.*sh` false positives — was matching ALL commands containing "sh" (like `ls /usr/share`). Now uses POSIX `[[:space:]]` for macOS BSD grep compatibility
+- **.gitattributes**: Added to force LF line endings on `*.sh` files (prevents `\r: command not found` on Windows)
+- **README**: Added Windows Git Bash setup guide with path format examples and known limitations
 
 ### v1.3.0 (2026-03-31)
 
