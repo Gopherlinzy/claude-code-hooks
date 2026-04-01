@@ -541,16 +541,40 @@ run_install() {
 
   if [ -n "$_tools_src" ]; then
     cp "$_tools_src" "${INSTALL_DIR}/merge-hooks.js"
-    ok "Installed ${COPIED} hook scripts + merge-hooks.js"
-  else
-    warn "merge-hooks.js not found in source — hooks injection may fail"
-    ok "Installed ${COPIED} hook scripts"
   fi
+
+  # 安装 select-modules.js
+  local _select_src=""
+  if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/tools/select-modules.js" ]; then
+    _select_src="${SCRIPT_DIR}/tools/select-modules.js"
+  elif [ -n "$_install_tmp" ] && [ -f "${_install_tmp}/repo/tools/select-modules.js" ]; then
+    _select_src="${_install_tmp}/repo/tools/select-modules.js"
+  fi
+  if [ -n "$_select_src" ]; then
+    cp "$_select_src" "${INSTALL_DIR}/select-modules.js"
+  fi
+
+  ok "Installed ${COPIED} hook scripts + tools"
 
   # ── Step 3: Hooks 模块选择 ────────────────────────────────
   step 3 "Select hook modules to enable..."
 
-  if [ "$NON_INTERACTIVE" = false ]; then
+  if [ "$NON_INTERACTIVE" = false ] && [ -f "${INSTALL_DIR}/select-modules.js" ]; then
+    echo ""
+    # 用 Node.js TUI 选择器（↑↓ 导航，空格切换，Enter 确认）
+    local _selected
+    _selected=$(node "${INSTALL_DIR}/select-modules.js" 2>/dev/tty) || true
+
+    if [ -n "$_selected" ]; then
+      # 解析 JSON 数组，未选中的模块设为 false
+      [[ "$_selected" != *'"stop"'* ]]   && MODULE_STOP=false   && info "Disabled: Stop notification"
+      [[ "$_selected" != *'"safety"'* ]] && MODULE_SAFETY=false && info "Disabled: Safety gate"
+      [[ "$_selected" != *'"guard"'* ]]  && MODULE_GUARD=false  && info "Disabled: Large file guard"
+      [[ "$_selected" != *'"notify"'* ]] && MODULE_NOTIFY=false && info "Disabled: Wait notification"
+      [[ "$_selected" != *'"cancel"'* ]] && MODULE_CANCEL=false && info "Disabled: Cancel wait"
+    fi
+  elif [ "$NON_INTERACTIVE" = false ]; then
+    # Fallback：无 select-modules.js 时用简单数字输入
     echo ""
     echo -e "  ${BOLD}Available hook modules (all enabled by default):${NC}"
     echo ""
