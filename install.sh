@@ -580,11 +580,15 @@ run_install() {
   if [ "$NON_INTERACTIVE" = false ] && [ -f "${INSTALL_DIR}/select-modules.js" ]; then
     echo ""
     # 用 Node.js TUI 选择器（↑↓ 导航，空格切换，Enter 确认）
-    local _selected _select_rc=0
-    _selected=$(node "${INSTALL_DIR}/select-modules.js") || _select_rc=$?
-
+    # 不用 $() 捕获（会吞掉 TUI），改用 tmpfile 通信
+    local _select_tmp="${INSTALL_DIR}/.select-result.$$"
+    local _select_rc=0
+    node "${INSTALL_DIR}/select-modules.js" --output "$_select_tmp" || _select_rc=$?
+    
+    local _selected=""
     if [ "$_select_rc" -eq 130 ]; then
       # 用户按了 Ctrl+C
+      rm -f "$_select_tmp"
       warn "Module selection cancelled."
       echo -n "  Continue with all modules enabled? [Y/n] "
       read -r _CONT <&3 || true
@@ -592,7 +596,9 @@ run_install() {
         info "Installation cancelled."
         exit 0
       fi
-      _selected=""
+    elif [ -f "$_select_tmp" ]; then
+      _selected=$(cat "$_select_tmp")
+      rm -f "$_select_tmp"
     fi
 
     if [ -n "$_selected" ]; then
