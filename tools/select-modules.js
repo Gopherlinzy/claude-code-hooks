@@ -54,14 +54,16 @@ if (process.stdin.isTTY) {
 let cursor = 0;
 
 function render() {
-  // Move cursor up to overwrite previous render (except first time)
   if (render._drawn) {
-    ttyOut.write(`\x1b[${MODULES.length + 2}A`);
+    ttyOut.write('\x1b[u');      // Restore saved cursor position
+    ttyOut.write('\x1b[J');      // Clear from cursor to end of screen
+  } else {
+    ttyOut.write('\x1b[s');      // Save cursor position (before first draw)
   }
   render._drawn = true;
 
-  ttyOut.write('\x1b[2K\x1b[90m  ↑↓ navigate  ␣ toggle  a all/none  Enter confirm\x1b[0m\n');
-  ttyOut.write('\x1b[2K\n');
+  ttyOut.write('\x1b[90m  ↑↓ navigate  ␣ toggle  a all/none  Enter confirm\x1b[0m\n');
+  ttyOut.write('\n');
 
   for (let i = 0; i < MODULES.length; i++) {
     const m = MODULES[i];
@@ -69,7 +71,7 @@ function render() {
     const check = m.on ? '\x1b[32m✔\x1b[0m' : ' ';
     const label = i === cursor ? `\x1b[1m${m.label}\x1b[0m` : m.label;
     const desc = `\x1b[90m${m.desc}\x1b[0m`;
-    ttyOut.write(`\x1b[2K  ${pointer} [${check}] ${label.padEnd(30)} ${desc}\n`);
+    ttyOut.write(`  ${pointer} [${check}] ${label.padEnd(30)} ${desc}\n`);
   }
 }
 
