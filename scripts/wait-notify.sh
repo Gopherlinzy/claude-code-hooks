@@ -118,6 +118,25 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
 SESSION_SHORT="${SESSION_ID:0:8}"
 HOOK_EVENT="${HOOK_EVENT:-PermissionRequest}"
 
+# === 提取原始 tool_input JSON（供后台定时器格式化用）===
+TOOL_INPUT_RAW=""
+if [ -n "${STDIN_JSON}" ]; then
+    if command -v jq &>/dev/null; then
+        TOOL_INPUT_RAW="$(echo "${STDIN_JSON}" | jq -c '.tool_input // empty' 2>/dev/null || true)"
+    fi
+    if [ -z "${TOOL_INPUT_RAW:-}" ]; then
+        TOOL_INPUT_RAW="$(echo "${STDIN_JSON}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    ti = d.get('tool_input')
+    if ti is not None:
+        print(json.dumps(ti, ensure_ascii=False))
+except: pass
+" 2>/dev/null || true)"
+    fi
+fi
+
 # === Notification 事件：正常处理（2026-03-31 修复，原 P1 硬杀已移除）===
 # Notification 事件现在通过 matcher:"*" 正常触发，由脚本内部逻辑处理
 
@@ -196,6 +215,7 @@ cat > "${DETAIL_FILE}" <<EOF
   "session_short": "${SESSION_SHORT}",
   "tool_name": "${TOOL_NAME}",
   "tool_input": $(printf '%s' "${TOOL_INPUT_CMD}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
+  "tool_input_raw": ${TOOL_INPUT_RAW:-null},
   "hook_event": "${HOOK_EVENT}",
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
@@ -231,10 +251,12 @@ fi
     # 读取详情
     D_TOOL=""
     D_INPUT=""
+    D_INPUT_RAW=""
     D_EVENT=""
     if [ -f "${DETAIL_FILE}" ] && command -v jq &>/dev/null; then
         D_TOOL="$(jq -r '.tool_name // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_INPUT="$(jq -r '.tool_input // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
+        D_INPUT_RAW="$(jq -c '.tool_input_raw // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
         D_EVENT="$(jq -r '.hook_event // empty' "${DETAIL_FILE}" 2>/dev/null || true)"
     fi
     # python3 fallback when jq unavailable
@@ -256,6 +278,17 @@ try:
 except: pass
 " 2>/dev/null || true)"
     fi
+    if [ -z "${D_INPUT_RAW:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
+        D_INPUT_RAW="$(python3 -c "
+import json
+try:
+    d = json.load(open('${DETAIL_FILE}'))
+    raw = d.get('tool_input_raw')
+    if raw is not None:
+        print(json.dumps(raw, ensure_ascii=False))
+except: pass
+" 2>/dev/null || true)"
+    fi
     if [ -z "${D_EVENT:-}" ] && [ -f "${DETAIL_FILE:-}" ]; then
         D_EVENT="$(python3 -c "
 import json
@@ -273,13 +306,14 @@ except: pass
     fi
 
     # === 智能格式化 tool_input（将 JSON 结构化为可读文本）===
+    # 优先使用 tool_input_raw（原始 JSON 对象），fallback 到 tool_input（字符串摘要）
+    _FORMAT_SOURCE="${D_INPUT_RAW:-${D_INPUT:-}}"
     FORMATTED_INPUT="${D_INPUT:-无}"
-    if [ -n "${D_INPUT:-}" ]; then
-        _MAYBE_FORMATTED="$(printf '%s' "${D_INPUT}" | python3 -c "
+    if [ -n "${_FORMAT_SOURCE:-}" ]; then
+        _MAYBE_FORMATTED="$(printf '%s' "${_FORMAT_SOURCE}" | python3 -c "
 import json, sys
 try:
     raw = sys.stdin.read()
-    # Try parsing as JSON for structured formatting
     d = json.loads(raw) if raw.strip().startswith('{') or raw.strip().startswith('[') else None
     if d is None:
         print(raw[:500])
