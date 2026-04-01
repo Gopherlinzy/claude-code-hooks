@@ -1,278 +1,760 @@
 #!/usr/bin/env bash
-# install.sh — One-click installer for claude-code-hooks
+# install.sh — Claude Code Hooks installer (v2)
 # Usage:
 #   Interactive:     ./install.sh
-#   Non-interactive: ./install.sh --non-interactive
+#   Non-interactive: ./install.sh --non-interactive | -y
+#   Update scripts:  ./install.sh --update
+#   Uninstall:       ./install.sh --uninstall [--purge]
+#   Status:          ./install.sh --status
 #   From curl:       curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
 set -euo pipefail
 
-# ─── Colors ───
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+# ─── 颜色 & 日志 ───
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info()  { echo -e "${BLUE}ℹ${NC}  $*"; }
 ok()    { echo -e "${GREEN}✅${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠️${NC}  $*"; }
 err()   { echo -e "${RED}❌${NC} $*" >&2; }
 step()  { echo -e "\n${CYAN}${BOLD}[$1/$TOTAL_STEPS]${NC} ${BOLD}$2${NC}"; }
 
-TOTAL_STEPS=5
-NON_INTERACTIVE=false
+# ─── 全局常量 ───
+TOTAL_STEPS=6
+REPO_URL="https://github.com/Gopherlinzy/claude-code-hooks.git"
 INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
 CLAUDE_DIR="${HOME}/.claude"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
+CONF_FILE="${INSTALL_DIR}/notify.conf"
+LOCKDIR="${CLAUDE_DIR}/.settings-lock"
 
-# ─── Parse args ───
+# ─── 运行时状态 ───
+SUBCMD=""
+PURGE=false
+NON_INTERACTIVE=false
+BACKUP_FILE=""
+# 模块开关（默认全开）
+MODULE_STOP=true
+MODULE_SAFETY=true
+MODULE_GUARD=true
+MODULE_NOTIFY=true
+MODULE_CANCEL=true
+
+# 检测脚本目录（curl|bash 模式时可能为空/无效）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+# ─── 解析参数 ───
 for arg in "$@"; do
   case "$arg" in
     --non-interactive|-y) NON_INTERACTIVE=true ;;
-    --help|-h)
-      echo "Usage: $0 [--non-interactive|-y] [--help|-h]"
-      echo "  --non-interactive  Skip prompts, use defaults (feishu, no target)"
-      exit 0 ;;
+    --update)             SUBCMD="update" ;;
+    --uninstall)          SUBCMD="uninstall" ;;
+    --purge)              PURGE=true ;;
+    --status)             SUBCMD="status" ;;
+    --help|-h)            SUBCMD="help" ;;
   esac
 done
 
-echo -e "\n${BOLD}🦞 Claude Code Hooks Installer${NC}\n"
+# ═══════════════════════════════════════════════════════════
+# 工具函数
+# ═══════════════════════════════════════════════════════════
 
-# ─── Step 1: Environment check ───
-step 1 "Checking environment..."
+# 跨平台文件大小
+file_size() {
+  stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || wc -c < "$1" | tr -d ' '
+}
 
-if ! command -v git &>/dev/null; then
-  err "git is required but not found. Please install git first."
-  exit 1
-fi
+# mkdir 原子锁（跨平台，替代 flock）
+acquire_lock() {
+  mkdir -p "$CLAUDE_DIR"
+  local attempts=0
+  while ! mkdir "$LOCKDIR" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    if [ $attempts -gt 10 ]; then
+      err "Could not acquire settings lock after 10 attempts."
+      err "If no other install is running, remove: $LOCKDIR"
+      exit 1
+    fi
+    sleep 1
+  done
+}
 
-if ! command -v claude &>/dev/null; then
-  warn "claude CLI not found — hooks will be installed but won't work until Claude Code is installed."
-fi
+release_lock() {
+  rm -rf "$LOCKDIR" 2>/dev/null || true
+}
 
-if [ -d "${CLAUDE_DIR}" ]; then
-  ok "Found ~/.claude"
-else
-  warn "~/.claude not found — will be created when Claude Code first runs"
-fi
-
-if [ -d "${INSTALL_DIR}" ]; then
-  ok "Found ${INSTALL_DIR}"
-else
-  info "${INSTALL_DIR} not found — creating directory structure"
-  mkdir -p "${INSTALL_DIR}"
-fi
-
-# ─── Step 2: Copy scripts ───
-step 2 "Installing hook scripts to ${INSTALL_DIR}..."
-
-mkdir -p "${INSTALL_DIR}"
-
-# Detect source: running from cloned repo or via curl pipe
-if [ -d "${SCRIPT_DIR}/scripts" ] && [ -f "${SCRIPT_DIR}/scripts/cc-stop-hook.sh" ]; then
-  # Running from cloned repo
-  SRC_DIR="${SCRIPT_DIR}/scripts"
-  info "Source: local repo at ${SCRIPT_DIR}"
-else
-  # Running via curl — need to clone
-  TMPDIR_CLONE="$(mktemp -d)"
-  trap 'rm -rf "${TMPDIR_CLONE}"' EXIT
-  info "Cloning from GitHub..."
-  git clone --depth 1 --quiet https://github.com/Gopherlinzy/claude-code-hooks.git "${TMPDIR_CLONE}/repo" 2>/dev/null
-  SRC_DIR="${TMPDIR_CLONE}/repo/scripts"
-fi
-
-COPIED=0
-for f in "${SRC_DIR}"/*.sh; do
-  [ -f "$f" ] || continue
-  cp "$f" "${INSTALL_DIR}/$(basename "$f")"
-  COPIED=$((COPIED + 1))
-done
-chmod +x "${INSTALL_DIR}"/*.sh
-
-# Copy example configs (don't overwrite existing)
-for conf in "${SRC_DIR}"/*.example; do
-  [ -f "$conf" ] || continue
-  dest="${INSTALL_DIR}/$(basename "$conf")"
-  [ -f "$dest" ] || cp "$conf" "$dest"
-done
-
-ok "Installed ${COPIED} hook scripts"
-
-# ─── Step 3: Configure notify.conf ───
-step 3 "Configuring notifications..."
-
-CONF_FILE="${INSTALL_DIR}/notify.conf"
-
-if [ -f "${CONF_FILE}" ] && [ "$NON_INTERACTIVE" = false ]; then
-  echo -e "  Existing notify.conf found."
-  echo -n "  Overwrite? [y/N] "
-  read -r OVERWRITE
-  if [[ ! "$OVERWRITE" =~ ^[Yy]$ ]]; then
-    ok "Keeping existing notify.conf"
-    SKIP_CONF=true
-  else
-    SKIP_CONF=false
+# 备份 settings.json（时间戳后缀，幂等）
+backup_settings() {
+  if [ -f "$SETTINGS_FILE" ]; then
+    BACKUP_FILE="${SETTINGS_FILE}.bak.$(date +%s)"
+    cp "$SETTINGS_FILE" "$BACKUP_FILE"
+    ok "Backed up settings.json → $(basename "$BACKUP_FILE")"
   fi
-else
-  SKIP_CONF=false
-fi
+}
 
-if [ "$SKIP_CONF" = false ]; then
-  if [ "$NON_INTERACTIVE" = true ]; then
-    CC_CHANNEL="feishu"
-    CC_TARGET=""
-    CC_TIMEOUT=30
+# 保留最近 5 份备份，清理旧的
+cleanup_old_backups() {
+  local backups
+  # shellcheck disable=SC2207
+  backups=($(ls -t "${SETTINGS_FILE}.bak."* 2>/dev/null)) || return 0
+  if [ "${#backups[@]}" -gt 5 ]; then
+    for old in "${backups[@]:5}"; do
+      rm -f "$old"
+    done
+  fi
+}
+
+# 回滚到最近备份
+rollback_settings() {
+  if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+    cp "$BACKUP_FILE" "$SETTINGS_FILE"
+    ok "Rolled back settings.json to $(basename "$BACKUP_FILE")"
   else
+    warn "No backup file available for rollback."
+    return 1
+  fi
+}
+
+# ERR 信号处理：提示回滚
+_ERROR_HANDLED=false
+on_error() {
+  [ "$_ERROR_HANDLED" = true ] && return
+  _ERROR_HANDLED=true
+  echo ""
+  err "An error occurred. Installation may be incomplete."
+  release_lock
+  if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+    warn "Your settings.json backup: $BACKUP_FILE"
+    if [ "$NON_INTERACTIVE" = false ]; then
+      echo -n "  Rollback settings.json to backup? [Y/n] "
+      read -r _ROLLBACK_CHOICE || true
+      if [[ ! "${_ROLLBACK_CHOICE:-}" =~ ^[Nn]$ ]]; then
+        rollback_settings
+      fi
+    fi
+  fi
+}
+trap 'on_error' ERR
+
+# ─── 生成 hooks-patch.json（基于当前模块开关状态）───
+generate_hooks_patch() {
+  local output="$1"
+  MOD_STOP="${MODULE_STOP}" \
+  MOD_SAFETY="${MODULE_SAFETY}" \
+  MOD_GUARD="${MODULE_GUARD}" \
+  MOD_NOTIFY="${MODULE_NOTIFY}" \
+  MOD_CANCEL="${MODULE_CANCEL}" \
+  INSTALL_DIR_ENV="${INSTALL_DIR}" \
+  PATCH_OUTPUT="${output}" \
+  node -e "
+    const fs = require('fs');
+    const patch = { hooks: {} };
+    const dir = process.env.INSTALL_DIR_ENV;
+    const add = (event, entry) => {
+      if (!patch.hooks[event]) patch.hooks[event] = [];
+      patch.hooks[event].push(entry);
+    };
+    if (process.env.MOD_STOP === 'true')
+      add('Stop', { matcher: '*', hooks: [{ type: 'command', command: dir + '/cc-stop-hook.sh', timeout: 15 }] });
+    if (process.env.MOD_SAFETY === 'true')
+      add('PreToolUse', { matcher: 'Bash', hooks: [{ type: 'command', command: dir + '/cc-safety-gate.sh', timeout: 5 }] });
+    if (process.env.MOD_GUARD === 'true')
+      add('PreToolUse', { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: dir + '/guard-large-files.sh', timeout: 5 }] });
+    if (process.env.MOD_NOTIFY === 'true')
+      add('Notification', { matcher: '*', hooks: [{ type: 'command', command: dir + '/wait-notify.sh', timeout: 5 }] });
+    if (process.env.MOD_CANCEL === 'true')
+      add('PostToolUse', { matcher: '*', hooks: [{ type: 'command', command: dir + '/cancel-wait.sh', timeout: 3 }] });
+    fs.writeFileSync(process.env.PATCH_OUTPUT, JSON.stringify(patch, null, 2) + '\n', 'utf8');
+  "
+}
+
+# ─── 将 patch 深度合并进 settings.json（原子写入）───
+inject_hooks() {
+  local tmp_output="${SETTINGS_FILE}.tmp.$$"
+  local patch_file="${INSTALL_DIR}/hooks-patch.json"
+
+  # 确保 settings.json 存在
+  if [ ! -f "$SETTINGS_FILE" ]; then
+    mkdir -p "$CLAUDE_DIR"
+    echo '{}' > "$SETTINGS_FILE"
+    info "Created empty settings.json"
+  fi
+
+  # 生成 patch
+  generate_hooks_patch "$patch_file"
+
+  # 深度合并 → tmp
+  if ! node "${INSTALL_DIR}/merge-hooks.js" "$SETTINGS_FILE" "$patch_file" "$tmp_output" 2>/dev/null; then
+    err "Merge script failed — settings.json unchanged."
+    rm -f "$tmp_output" "$patch_file"
+    return 1
+  fi
+
+  # 二次验证 JSON 合法性
+  if ! TMP_PATH="${tmp_output}" node -e "
+      JSON.parse(require('fs').readFileSync(process.env.TMP_PATH,'utf8'))
+    " 2>/dev/null; then
+    err "Merged JSON validation failed — aborting."
+    rm -f "$tmp_output" "$patch_file"
+    return 1
+  fi
+
+  # 交互模式：展示 diff，等待确认
+  if [ "$NON_INTERACTIVE" = false ]; then
     echo ""
-    echo -e "  ${BOLD}Notification channel:${NC}"
-    echo "    1) feishu (Lark)"
-    echo "    2) telegram"
-    echo "    3) slack"
-    echo "    4) discord"
-    echo "    5) none (skip notifications)"
-    echo -n "  Choose [1-5, default=1]: "
-    read -r CHANNEL_CHOICE
-    case "${CHANNEL_CHOICE:-1}" in
-      1) CC_CHANNEL="feishu" ;;
-      2) CC_CHANNEL="telegram" ;;
-      3) CC_CHANNEL="slack" ;;
-      4) CC_CHANNEL="discord" ;;
-      5) CC_CHANNEL="none" ;;
-      *) CC_CHANNEL="feishu" ;;
-    esac
-
-    if [ "$CC_CHANNEL" != "none" ]; then
-      case "$CC_CHANNEL" in
-        feishu)   echo -n "  Feishu open_id (ou_xxx): " ;;
-        telegram) echo -n "  Telegram chat_id: " ;;
-        slack)    echo -n "  Slack channel ID: " ;;
-        discord)  echo -n "  Discord channel ID: " ;;
-      esac
-      read -r CC_TARGET
-
-      echo -n "  Wait timeout before notification (seconds) [30]: "
-      read -r CC_TIMEOUT
-      CC_TIMEOUT="${CC_TIMEOUT:-30}"
-    else
-      CC_TARGET=""
-      CC_TIMEOUT=30
+    echo -e "  ${BOLD}Pending changes to ~/.claude/settings.json:${NC}"
+    if command -v diff &>/dev/null && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+      diff "$BACKUP_FILE" "$tmp_output" 2>/dev/null || true
+    fi
+    echo ""
+    echo -n "  Apply these changes? [Y/n] "
+    read -r _CONFIRM_INJ || true
+    if [[ "${_CONFIRM_INJ:-}" =~ ^[Nn]$ ]]; then
+      rm -f "$tmp_output" "$patch_file"
+      warn "Hooks injection skipped."
+      return 0
     fi
   fi
 
-  cat > "${CONF_FILE}" << CONF
+  # 原子移入
+  mv "$tmp_output" "$SETTINGS_FILE"
+  rm -f "$patch_file"
+  ok "settings.json updated successfully."
+}
+
+# ─── Webhook 连通性测试 ───
+validate_webhook() {
+  local url="$1"
+  [ -z "$url" ] && return 0
+  info "Testing webhook connectivity..."
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    --connect-timeout 5 --max-time 10 \
+    -X POST "$url" \
+    -H "Content-Type: application/json" \
+    -d '{"msg_type":"text","content":{"text":"🦞 claude-code-hooks connectivity test"}}' \
+    2>/dev/null) || true
+  case "$http_code" in
+    200|204) ok "Webhook test passed (HTTP ${http_code})" ;;
+    000)     warn "Could not reach webhook URL — check network or URL" ;;
+    *)       warn "Webhook returned HTTP ${http_code} — may need verification" ;;
+  esac
+}
+
+# ═══════════════════════════════════════════════════════════
+# 子命令
+# ═══════════════════════════════════════════════════════════
+
+cmd_help() {
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  (none)                Run interactive 6-step installer"
+  echo "  --non-interactive|-y  Skip prompts, use defaults"
+  echo "  --status              Show current installation status"
+  echo "  --update              Update scripts only, keep config"
+  echo "  --uninstall           Remove hook scripts and hooks from settings.json"
+  echo "  --uninstall --purge   Also delete notify.conf and install directory"
+  echo "  --help|-h             Show this help"
+  echo ""
+  echo "curl | bash install:"
+  echo "  curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash"
+}
+
+cmd_status() {
+  echo -e "\n${BOLD}🦞 Claude Code Hooks — Status${NC}\n"
+
+  if [ -d "$INSTALL_DIR" ]; then
+    ok "Installed at ${INSTALL_DIR}"
+    local sh_count
+    sh_count=$(ls "${INSTALL_DIR}"/*.sh 2>/dev/null | wc -l | tr -d ' ')
+    info "${sh_count} hook script(s) found"
+  else
+    err "Not installed (${INSTALL_DIR} does not exist)"
+    return 1
+  fi
+
+  if [ -f "$SETTINGS_FILE" ]; then
+    SETTINGS_FILE_ENV="${SETTINGS_FILE}" INSTALL_DIR_ENV="${INSTALL_DIR}" \
+    node -e "
+      const fs = require('fs');
+      const s = JSON.parse(fs.readFileSync(process.env.SETTINGS_FILE_ENV, 'utf8'));
+      const hooks = s.hooks || {};
+      const dir = process.env.INSTALL_DIR_ENV;
+      let ours = 0, total = 0;
+      for (const entries of Object.values(hooks)) {
+        for (const entry of entries) {
+          for (const h of (entry.hooks || [])) {
+            total++;
+            if (h.command && h.command.startsWith(dir)) ours++;
+          }
+        }
+      }
+      console.log('  \u2139\ufe0f  Hooks in settings.json: ' + total + ' total, ' + ours + ' from claude-code-hooks');
+    " 2>/dev/null || warn "Could not parse settings.json"
+  else
+    warn "settings.json not found"
+  fi
+
+  if [ -f "$CONF_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$CONF_FILE" 2>/dev/null || true
+    ok "notify.conf: channel=${CC_NOTIFY_CHANNEL:-unknown}"
+  else
+    warn "notify.conf not found"
+  fi
+
+  local backup_count
+  backup_count=$(ls "${SETTINGS_FILE}.bak."* 2>/dev/null | wc -l | tr -d ' ')
+  info "${backup_count} backup(s) of settings.json found"
+}
+
+cmd_update() {
+  echo -e "\n${BOLD}🦞 Claude Code Hooks — Update${NC}\n"
+
+  if [ ! -d "$INSTALL_DIR" ]; then
+    err "No existing installation found at ${INSTALL_DIR}. Run install first."
+    exit 1
+  fi
+
+  # 备份 settings.json
+  acquire_lock
+  backup_settings
+
+  # 克隆最新代码
+  local _update_tmp
+  _update_tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '${_update_tmp}'; release_lock" EXIT
+
+  info "Fetching latest from GitHub..."
+  git clone --depth 1 --quiet "$REPO_URL" "${_update_tmp}/repo"
+
+  # 覆盖脚本（保留 notify.conf）
+  local updated=0
+  for f in "${_update_tmp}/repo/scripts"/*.sh; do
+    [ -f "$f" ] || continue
+    cp "$f" "${INSTALL_DIR}/$(basename "$f")"
+    updated=$((updated + 1))
+  done
+  chmod +x "${INSTALL_DIR}"/*.sh
+  ok "Updated ${updated} hook scripts"
+
+  # 更新 merge 工具
+  if [ -f "${_update_tmp}/repo/tools/merge-hooks.js" ]; then
+    cp "${_update_tmp}/repo/tools/merge-hooks.js" "${INSTALL_DIR}/merge-hooks.js"
+    ok "Updated merge-hooks.js"
+  fi
+
+  rm -rf "${_update_tmp}"
+
+  # 重新注入 hooks
+  if [ "$NON_INTERACTIVE" = false ]; then
+    echo -n "  Re-inject hooks into settings.json? [Y/n] "
+    read -r _REINJECT || true
+  fi
+  if [ "$NON_INTERACTIVE" = true ] || [[ ! "${_REINJECT:-}" =~ ^[Nn]$ ]]; then
+    inject_hooks
+  fi
+
+  cleanup_old_backups
+  release_lock
+
+  echo -e "\n${GREEN}${BOLD}✅ Update complete!${NC}"
+  echo "  Restart Claude Code to activate changes."
+}
+
+cmd_uninstall() {
+  echo -e "\n${BOLD}🦞 Claude Code Hooks — Uninstall${NC}\n"
+
+  if [ ! -d "$INSTALL_DIR" ]; then
+    warn "No installation found at ${INSTALL_DIR}"
+    return 0
+  fi
+
+  if [ "$NON_INTERACTIVE" = false ] && [ "$PURGE" = false ]; then
+    echo -n "  Remove claude-code-hooks? [y/N] "
+    read -r _CONFIRM_UNINSTALL || true
+    if [[ ! "${_CONFIRM_UNINSTALL:-}" =~ ^[Yy]$ ]]; then
+      info "Uninstall cancelled."
+      return 0
+    fi
+  fi
+
+  # 备份 settings.json
+  acquire_lock
+  backup_settings
+
+  # 精准移除 settings.json 中属于本工具的 hooks 条目
+  if [ -f "$SETTINGS_FILE" ]; then
+    info "Removing claude-code-hooks entries from settings.json..."
+    local _rm_tmp="${SETTINGS_FILE}.tmp.$$"
+    SETTINGS_PATH="${SETTINGS_FILE}" \
+    INSTALL_DIR_ENV="${INSTALL_DIR}" \
+    TMP_OUTPUT="${_rm_tmp}" \
+    node -e "
+      const fs = require('fs');
+      const s = JSON.parse(fs.readFileSync(process.env.SETTINGS_PATH, 'utf8'));
+      const dir = process.env.INSTALL_DIR_ENV;
+      if (s.hooks) {
+        for (const event of Object.keys(s.hooks)) {
+          s.hooks[event] = s.hooks[event].map(entry => {
+            entry.hooks = (entry.hooks || []).filter(
+              h => !h.command || !h.command.startsWith(dir)
+            );
+            return entry;
+          }).filter(entry => entry.hooks.length > 0);
+          if (s.hooks[event].length === 0) delete s.hooks[event];
+        }
+        if (Object.keys(s.hooks).length === 0) delete s.hooks;
+      }
+      fs.writeFileSync(process.env.TMP_OUTPUT, JSON.stringify(s, null, 2) + '\n', 'utf8');
+    " 2>/dev/null
+
+    if [ -f "$_rm_tmp" ]; then
+      if TMP_PATH="${_rm_tmp}" node -e "
+          JSON.parse(require('fs').readFileSync(process.env.TMP_PATH,'utf8'))
+        " 2>/dev/null; then
+        mv "$_rm_tmp" "$SETTINGS_FILE"
+        ok "Removed claude-code-hooks entries from settings.json"
+      else
+        err "Validation failed — settings.json unchanged."
+        rm -f "$_rm_tmp"
+      fi
+    fi
+  fi
+
+  # 删除脚本文件
+  rm -f "${INSTALL_DIR}"/*.sh "${INSTALL_DIR}/merge-hooks.js" 2>/dev/null || true
+  ok "Removed hook scripts"
+
+  # --purge：删除整个目录（含 notify.conf）
+  if [ "$PURGE" = true ]; then
+    rm -rf "${INSTALL_DIR}"
+    ok "Purged ${INSTALL_DIR} (including notify.conf)"
+  else
+    info "Kept ${INSTALL_DIR}/notify.conf (use --purge to delete it)"
+  fi
+
+  cleanup_old_backups
+  release_lock
+
+  echo -e "\n${GREEN}${BOLD}✅ Uninstall complete!${NC}"
+  [ -n "$BACKUP_FILE" ] && info "Backup: $BACKUP_FILE"
+}
+
+# ═══════════════════════════════════════════════════════════
+# 主安装流程（6 步）
+# ═══════════════════════════════════════════════════════════
+
+run_install() {
+  echo -e "\n${BOLD}🦞 Claude Code Hooks Installer${NC}\n"
+
+  # ── Step 1: 环境检查 ─────────────────────────────────────
+  step 1 "Checking environment..."
+
+  if ! command -v node &>/dev/null; then
+    err "Node.js is required but not found."
+    err "Claude Code depends on Node.js — please install it first."
+    exit 1
+  fi
+  ok "Node.js $(node -v)"
+
+  if ! command -v git &>/dev/null; then
+    err "git is required but not found. Please install git first."
+    exit 1
+  fi
+  ok "git $(git --version | awk '{print $3}')"
+
+  if command -v claude &>/dev/null; then
+    ok "Claude Code CLI found"
+  else
+    warn "claude CLI not found — hooks won't work until Claude Code is installed"
+  fi
+
+  if [ -d "$CLAUDE_DIR" ]; then
+    ok "Found ~/.claude"
+  else
+    info "~/.claude not found — creating it"
+    mkdir -p "$CLAUDE_DIR"
+  fi
+
+  if [ -d "$INSTALL_DIR" ] && ls "${INSTALL_DIR}"/*.sh &>/dev/null 2>&1; then
+    info "Existing installation detected at ${INSTALL_DIR}"
+  fi
+
+  # ── Step 2: 安装脚本 ─────────────────────────────────────
+  step 2 "Installing hook scripts to ${INSTALL_DIR}..."
+
+  mkdir -p "${INSTALL_DIR}"
+
+  local SRC_DIR=""
+  local _install_tmp=""
+  # 检测运行方式：本地 repo 还是 curl|bash
+  if [ -n "$SCRIPT_DIR" ] && [ -d "${SCRIPT_DIR}/scripts" ] && [ -f "${SCRIPT_DIR}/scripts/cc-stop-hook.sh" ]; then
+    SRC_DIR="${SCRIPT_DIR}/scripts"
+    info "Source: local repo at ${SCRIPT_DIR}"
+  else
+    _install_tmp="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf '${_install_tmp}'" EXIT
+    info "Cloning from GitHub..."
+    git clone --depth 1 --quiet "$REPO_URL" "${_install_tmp}/repo"
+    SRC_DIR="${_install_tmp}/repo/scripts"
+  fi
+
+  local COPIED=0
+  for f in "${SRC_DIR}"/*.sh; do
+    [ -f "$f" ] || continue
+    cp "$f" "${INSTALL_DIR}/$(basename "$f")"
+    COPIED=$((COPIED + 1))
+  done
+  chmod +x "${INSTALL_DIR}"/*.sh
+
+  # 复制示例配置（不覆盖已有文件）
+  for conf in "${SRC_DIR}"/*.example; do
+    [ -f "$conf" ] || continue
+    local dest="${INSTALL_DIR}/$(basename "$conf")"
+    [ -f "$dest" ] || cp "$conf" "$dest"
+  done
+
+  # 安装 merge 工具
+  local _tools_src=""
+  if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/tools/merge-hooks.js" ]; then
+    _tools_src="${SCRIPT_DIR}/tools/merge-hooks.js"
+  elif [ -n "$_install_tmp" ] && [ -f "${_install_tmp}/repo/tools/merge-hooks.js" ]; then
+    _tools_src="${_install_tmp}/repo/tools/merge-hooks.js"
+  fi
+
+  if [ -n "$_tools_src" ]; then
+    cp "$_tools_src" "${INSTALL_DIR}/merge-hooks.js"
+    ok "Installed ${COPIED} hook scripts + merge-hooks.js"
+  else
+    warn "merge-hooks.js not found in source — hooks injection may fail"
+    ok "Installed ${COPIED} hook scripts"
+  fi
+
+  # ── Step 3: Hooks 模块选择 ────────────────────────────────
+  step 3 "Select hook modules to enable..."
+
+  if [ "$NON_INTERACTIVE" = false ]; then
+    echo ""
+    echo -e "  ${BOLD}Available hook modules (all enabled by default):${NC}"
+    echo ""
+    echo -e "    1) [${GREEN}ON${NC}] Stop notification       → cc-stop-hook.sh"
+    echo -e "    2) [${GREEN}ON${NC}] Safety gate (Bash)      → cc-safety-gate.sh"
+    echo -e "    3) [${GREEN}ON${NC}] Large file guard        → guard-large-files.sh"
+    echo -e "    4) [${GREEN}ON${NC}] Wait notification       → wait-notify.sh"
+    echo -e "    5) [${GREEN}ON${NC}] Cancel wait             → cancel-wait.sh"
+    echo ""
+    echo -e "  Enter numbers to ${RED}disable${NC} (comma-separated), or press Enter to keep all:"
+    echo -n "  Disable: "
+    read -r _DISABLE_INPUT || true
+
+    if [ -n "${_DISABLE_INPUT:-}" ]; then
+      IFS=',' read -ra _DISABLED_NUMS <<< "$_DISABLE_INPUT"
+      for _num in "${_DISABLED_NUMS[@]}"; do
+        _num="$(echo "$_num" | tr -d ' ')"
+        case "$_num" in
+          1) MODULE_STOP=false;   info "Disabled: Stop notification" ;;
+          2) MODULE_SAFETY=false; info "Disabled: Safety gate" ;;
+          3) MODULE_GUARD=false;  info "Disabled: Large file guard" ;;
+          4) MODULE_NOTIFY=false; info "Disabled: Wait notification" ;;
+          5) MODULE_CANCEL=false; info "Disabled: Cancel wait" ;;
+        esac
+      done
+    fi
+  else
+    info "Non-interactive mode: all modules enabled"
+  fi
+
+  # ── Step 4: 自动注入 settings.json ───────────────────────
+  step 4 "Injecting hooks into ~/.claude/settings.json..."
+
+  if [ ! -f "${INSTALL_DIR}/merge-hooks.js" ]; then
+    warn "merge-hooks.js missing — skipping auto-injection."
+    warn "Add hooks manually (see README for the JSON snippet)."
+  else
+    acquire_lock
+    backup_settings
+    inject_hooks
+    cleanup_old_backups
+    release_lock
+  fi
+
+  # ── Step 5: 通知后端配置 ──────────────────────────────────
+  step 5 "Configure notification backend..."
+
+  local SKIP_CONF=false
+  if [ -f "$CONF_FILE" ] && [ "$NON_INTERACTIVE" = false ]; then
+    echo -e "  Existing notify.conf found."
+    echo -n "  Overwrite? [y/N] "
+    read -r _OVERWRITE || true
+    if [[ ! "${_OVERWRITE:-}" =~ ^[Yy]$ ]]; then
+      ok "Keeping existing notify.conf"
+      SKIP_CONF=true
+    fi
+  fi
+
+  if [ "$SKIP_CONF" = false ]; then
+    local CC_CHANNEL CC_TARGET CC_TIMEOUT WEBHOOK_URL
+    CC_TARGET="" WEBHOOK_URL="" CC_TIMEOUT=30
+
+    if [ "$NON_INTERACTIVE" = true ]; then
+      CC_CHANNEL="feishu"
+    else
+      echo ""
+      echo -e "  ${BOLD}Notification channel:${NC}"
+      echo "    1) feishu  (飞书)"
+      echo "    2) wecom   (企业微信)"
+      echo "    3) telegram"
+      echo "    4) slack"
+      echo "    5) discord"
+      echo "    6) none    (skip notifications)"
+      echo -n "  Choose [1-6, default=1]: "
+      read -r _CH_CHOICE || true
+      case "${_CH_CHOICE:-1}" in
+        1) CC_CHANNEL="feishu" ;;
+        2) CC_CHANNEL="wecom" ;;
+        3) CC_CHANNEL="telegram" ;;
+        4) CC_CHANNEL="slack" ;;
+        5) CC_CHANNEL="discord" ;;
+        6) CC_CHANNEL="none" ;;
+        *) CC_CHANNEL="feishu" ;;
+      esac
+
+      if [ "$CC_CHANNEL" != "none" ]; then
+        # 询问 Webhook URL
+        case "$CC_CHANNEL" in
+          feishu)   echo -n "  Feishu bot webhook URL (https://open.feishu.cn/...): " ;;
+          wecom)    echo -n "  WeCom bot webhook URL (https://qyapi.weixin.qq.com/...): " ;;
+          telegram) echo -n "  Telegram webhook URL: " ;;
+          slack)    echo -n "  Slack webhook URL (https://hooks.slack.com/...): " ;;
+          discord)  echo -n "  Discord webhook URL (https://discord.com/api/webhooks/...): " ;;
+        esac
+        read -r WEBHOOK_URL || true
+
+        # 询问通知目标 ID（可选，用于某些渠道）
+        case "$CC_CHANNEL" in
+          feishu)   echo -n "  Feishu open_id (ou_xxx, optional): " ;;
+          telegram) echo -n "  Telegram chat_id: " ;;
+          slack)    echo -n "  Slack channel ID (optional): " ;;
+          discord)  echo -n "  Discord channel ID (optional): " ;;
+          wecom)    CC_TARGET=""; echo "" ;;
+        esac
+        if [ "$CC_CHANNEL" != "wecom" ]; then
+          read -r CC_TARGET || true
+        fi
+
+        echo -n "  Wait timeout before notification (seconds) [30]: "
+        read -r CC_TIMEOUT || true
+        CC_TIMEOUT="${CC_TIMEOUT:-30}"
+
+        # 可选连通性测试
+        if [ -n "${WEBHOOK_URL:-}" ]; then
+          echo -n "  Test webhook now? [Y/n] "
+          read -r _TEST_WH || true
+          if [[ ! "${_TEST_WH:-}" =~ ^[Nn]$ ]]; then
+            validate_webhook "${WEBHOOK_URL:-}"
+          fi
+        fi
+      fi
+    fi
+
+    # 写入 conf 文件（chmod 600，避免 history 暴露）
+    local CHANNEL_UPPER
+    CHANNEL_UPPER="$(echo "$CC_CHANNEL" | tr '[:lower:]' '[:upper:]')"
+    cat > "$CONF_FILE" << CONF
 # Claude Code Hook Notification Config
 # Generated by install.sh on $(date +%Y-%m-%d)
-CC_NOTIFY_TARGET="${CC_TARGET}"
-CC_WAIT_NOTIFY_SECONDS=${CC_TIMEOUT}
 CC_NOTIFY_CHANNEL="${CC_CHANNEL}"
+CC_NOTIFY_TARGET="${CC_TARGET:-}"
+CC_WAIT_NOTIFY_SECONDS=${CC_TIMEOUT:-30}
 CONF
-  chmod 600 "${CONF_FILE}"
-  ok "Created notify.conf (channel: ${CC_CHANNEL})"
-fi
 
-# ─── Step 4: Show settings.json hooks config ───
-step 4 "Claude Code hooks registration..."
+    # Webhook URL 写入（非 none 且有值时）
+    if [ "$CC_CHANNEL" != "none" ] && [ -n "${WEBHOOK_URL:-}" ]; then
+      echo "NOTIFY_${CHANNEL_UPPER}_URL=\"${WEBHOOK_URL}\"" >> "$CONF_FILE"
+    fi
 
-HOOKS_JSON=$(cat << HOOKS
-Add the following to your ~/.claude/settings.json under the "hooks" key:
+    chmod 600 "$CONF_FILE"
+    ok "Created notify.conf (channel: ${CC_CHANNEL})"
+  fi
 
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "*",
-        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cc-stop-hook.sh"}]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cc-safety-gate.sh", "timeout": 5}]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/guard-large-files.sh", "timeout": 5}]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/cancel-wait.sh", "timeout": 3}]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "*",
-        "hooks": [{"type": "command", "command": "${INSTALL_DIR}/wait-notify.sh", "timeout": 5}]
-      }
-    ]
-  }
+  # ── Step 6: 验证 ─────────────────────────────────────────
+  step 6 "Verifying installation..."
+
+  local ERRORS=0
+  for script in cc-stop-hook.sh dispatch-claude.sh cc-safety-gate.sh \
+                guard-large-files.sh wait-notify.sh cancel-wait.sh; do
+    if [ -x "${INSTALL_DIR}/${script}" ]; then
+      ok "${script}"
+    else
+      err "${script} — missing or not executable"
+      ERRORS=$((ERRORS + 1))
+    fi
+  done
+
+  # merge-hooks.js 是工具，非必须脚本
+  if [ -f "${INSTALL_DIR}/merge-hooks.js" ]; then
+    ok "merge-hooks.js"
+  else
+    warn "merge-hooks.js missing — future hook injection won't work"
+  fi
+
+  # settings.json hooks 验证
+  if [ -f "$SETTINGS_FILE" ]; then
+    local HOOKS_COUNT
+    HOOKS_COUNT=$(SETTINGS_PATH="${SETTINGS_FILE}" node -e "
+      const s = JSON.parse(require('fs').readFileSync(process.env.SETTINGS_PATH,'utf8'));
+      console.log(Object.keys(s.hooks || {}).length);
+    " 2>/dev/null || echo "0")
+    if [ "${HOOKS_COUNT:-0}" -gt 0 ]; then
+      ok "settings.json: ${HOOKS_COUNT} hook event type(s) registered"
+    else
+      warn "settings.json: no hooks found — injection may have been skipped"
+    fi
+  else
+    warn "settings.json not found"
+  fi
+
+  # notify.conf 检查
+  if [ -f "$CONF_FILE" ]; then
+    ok "notify.conf ($(file_size "$CONF_FILE") bytes)"
+  else
+    warn "notify.conf not found — notifications won't work"
+  fi
+
+  # ── 结果汇总 ──────────────────────────────────────────────
+  echo ""
+  if [ "$ERRORS" -eq 0 ]; then
+    echo -e "${GREEN}${BOLD}🎉 Installation complete!${NC}"
+    echo ""
+    echo "  Scripts:  ${INSTALL_DIR}"
+    echo "  Config:   ${CONF_FILE}"
+    echo "  Settings: ${SETTINGS_FILE}"
+    [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ] && \
+      echo "  Backup:   ${BACKUP_FILE}"
+    echo ""
+    echo -e "  ${BOLD}Quick commands:${NC}"
+    echo "    ./install.sh --status     Show installation status"
+    echo "    ./install.sh --update     Update scripts (keep config)"
+    echo "    ./install.sh --uninstall  Remove hooks (keep config)"
+    echo ""
+    echo "  Restart Claude Code to activate hooks."
+  else
+    err "Installation completed with ${ERRORS} error(s)."
+    exit 1
+  fi
 }
-HOOKS
-)
 
-SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
+# ═══════════════════════════════════════════════════════════
+# 入口
+# ═══════════════════════════════════════════════════════════
 
-if [ -f "${SETTINGS_FILE}" ]; then
-  if grep -q '"hooks"' "${SETTINGS_FILE}" 2>/dev/null; then
-    ok "~/.claude/settings.json already has hooks configured"
-    info "If you need to update, merge the config below manually:"
-  else
-    warn "~/.claude/settings.json exists but has no hooks section"
-    info "Please add the following hooks configuration:"
-  fi
-else
-  warn "~/.claude/settings.json not found"
-  info "Create it or add the hooks config after installing Claude Code:"
-fi
-
-echo ""
-echo -e "${YELLOW}────────────────────────────────────────${NC}"
-echo "$HOOKS_JSON"
-echo -e "${YELLOW}────────────────────────────────────────${NC}"
-echo ""
-
-# ─── Step 5: Verify installation ───
-step 5 "Verifying installation..."
-
-ERRORS=0
-for script in cc-stop-hook.sh dispatch-claude.sh cc-safety-gate.sh guard-large-files.sh wait-notify.sh cancel-wait.sh; do
-  if [ -x "${INSTALL_DIR}/${script}" ]; then
-    ok "${script}"
-  else
-    err "${script} — missing or not executable"
-    ERRORS=$((ERRORS + 1))
-  fi
-done
-
-if [ -f "${CONF_FILE}" ]; then
-  ok "notify.conf ($(stat -f%z "$CONF_FILE" 2>/dev/null || stat -c%s "$CONF_FILE" 2>/dev/null) bytes)"
-else
-  warn "notify.conf not found — notifications won't work"
-fi
-
-echo ""
-if [ "$ERRORS" -eq 0 ]; then
-  echo -e "${GREEN}${BOLD}🎉 Installation complete!${NC}"
-  echo ""
-  echo "  Scripts installed to: ${INSTALL_DIR}"
-  echo "  Config file:          ${CONF_FILE}"
-  echo ""
-  echo -e "  ${BOLD}Next steps:${NC}"
-  echo "  1. Add the hooks config above to ~/.claude/settings.json"
-  echo "  2. Configure a notification backend (pick one):"
-  echo ""
-  echo -e "     ${BOLD}[Feishu 飞书]${NC}"
-  echo "     echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ${CONF_FILE}"
-  echo ""
-  echo -e "     ${BOLD}[WeCom 企业微信]${NC}"
-  echo "     echo 'NOTIFY_WECOM_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY' >> ${CONF_FILE}"
-  echo ""
-  echo -e "     ${BOLD}[Slack]${NC}"
-  echo "     echo 'CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL' >> ${CONF_FILE}"
-  echo ""
-  echo "  3. Restart Claude Code"
-  echo "  4. Test: ${INSTALL_DIR}/send-notification.sh 'Hello from cchooks!'"
-  echo ""
-  echo -e "  ${BOLD}For task dispatch:${NC}"
-  echo "  ${INSTALL_DIR}/dispatch-claude.sh -p 'your prompt' -w /path/to/project"
-else
-  err "Installation completed with ${ERRORS} error(s). Please check above."
-  exit 1
-fi
+case "$SUBCMD" in
+  help)      cmd_help ;;
+  status)    cmd_status ;;
+  update)    cmd_update ;;
+  uninstall) cmd_uninstall ;;
+  *)         run_install ;;
+esac
