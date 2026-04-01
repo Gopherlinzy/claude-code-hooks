@@ -272,10 +272,61 @@ except: pass
         EVENT_LABEL="通知确认"
     fi
 
+    # === 智能格式化 tool_input（将 JSON 结构化为可读文本）===
+    FORMATTED_INPUT="${D_INPUT:-无}"
+    if [ -n "${D_INPUT:-}" ]; then
+        _MAYBE_FORMATTED="$(printf '%s' "${D_INPUT}" | python3 -c "
+import json, sys
+try:
+    raw = sys.stdin.read()
+    # Try parsing as JSON for structured formatting
+    d = json.loads(raw) if raw.strip().startswith('{') or raw.strip().startswith('[') else None
+    if d is None:
+        print(raw[:500])
+        sys.exit(0)
+    lines = []
+    # AskUserQuestion: format question + options
+    questions = d.get('questions') or d.get('question')
+    if isinstance(questions, list):
+        for q in questions:
+            header = q.get('header') or ''
+            question = q.get('question') or ''
+            if header:
+                lines.append(f'📋 {header}')
+            if question:
+                lines.append(f'❓ {question}')
+            options = q.get('options') or []
+            for i, opt in enumerate(options, 1):
+                label = opt.get('label') or str(opt)
+                desc = opt.get('description') or ''
+                if desc:
+                    lines.append(f'  {i}. {label} — {desc}')
+                else:
+                    lines.append(f'  {i}. {label}')
+    elif isinstance(questions, str):
+        lines.append(f'❓ {questions}')
+    elif d.get('command'):
+        lines.append(d['command'][:500])
+    elif d.get('question'):
+        lines.append(f\"❓ {d['question']}\")
+    elif d.get('text'):
+        lines.append(d['text'][:500])
+    else:
+        lines.append(json.dumps(d, ensure_ascii=False, indent=2)[:500])
+    print('\n'.join(lines))
+except:
+    print(raw[:500] if 'raw' in dir() else '')
+" 2>/dev/null || true)"
+        if [ -n "${_MAYBE_FORMATTED}" ]; then
+            FORMATTED_INPUT="${_MAYBE_FORMATTED}"
+        fi
+    fi
+
     NOTIFY_MSG="⏰ Claude Code 等待你操作已超 ${WAIT_SECONDS} 秒！
 📌 类型: ${EVENT_LABEL}
 🔧 工具: ${D_TOOL:-未知}
-💻 内容: ${D_INPUT:-无}
+💻 内容:
+${FORMATTED_INPUT}
 🆔 Session: ${SESSION_SHORT}
 
 👉 请回到终端完成操作（允许/拒绝/输入）"
