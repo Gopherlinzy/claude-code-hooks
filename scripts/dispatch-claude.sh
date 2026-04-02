@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# === Platform shim (cross-platform compatibility) ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
+
 # === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
 if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
     python3() { PYTHONUTF8=1 python "$@"; }
@@ -180,7 +183,7 @@ if git -C "${WORKDIR}" rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 # === 确保日志输出目录存在 ===
-LOG_DIR="/tmp/cchooks"
+LOG_DIR="${CCHOOKS_TMPDIR:-/tmp/cchooks}"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/${CLAUDE_TASK_ID}.log"
 
@@ -227,9 +230,9 @@ if [ "${SYNC_MODE}" = true ]; then
     # --sync：前台阻塞执行（等价于现有 exec 阻塞模式，适合调试和 Fallback）
     echo "[dispatch-claude] SYNC mode | task_id=${CLAUDE_TASK_ID} | name=${TASK_NAME}"
     if command -v jq &>/dev/null; then
-        _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "sync" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,workdir:$wd}')"
+        _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "sync" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,workdir:$wd}')"
     else
-        _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"sync\",\"workdir\":\"${WORKDIR}\"}"
+        _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"sync\",\"workdir\":\"${WORKDIR}\"}"
     fi
     source ~/.zshrc 2>/dev/null || true
     sanitize_env
@@ -244,13 +247,13 @@ else
     _SKILL_INDEX_TMP=""
     _ASYNC_SKILL_ARG=""
     if [[ -s "${_SKILL_INDEX_FILE}" ]]; then
-        _SKILL_INDEX_TMP="$(mktemp /tmp/cchooks-skill-index.XXXXXX)"
+        _SKILL_INDEX_TMP="$(mktemp "${CCHOOKS_TMPDIR:-/tmp}/cchooks-skill-index.XXXXXX")"
         cp "${_SKILL_INDEX_FILE}" "${_SKILL_INDEX_TMP}"
         _ASYNC_SKILL_ARG="--append-system-prompt \"\$(<'${_SKILL_INDEX_TMP}')\""
     fi
 
     # PROMPT 写入临时文件，彻底避免引号转义问题
-    _PROMPT_TMP="$(mktemp /tmp/cchooks-prompt.XXXXXX)"
+    _PROMPT_TMP="$(mktemp "${CCHOOKS_TMPDIR:-/tmp}/cchooks-prompt.XXXXXX")"
     printf '%s' "${PROMPT}" > "${_PROMPT_TMP}"
 
     # stream-json 模式参数（异步模式下通过字符串拼接传入 nohup）
@@ -310,9 +313,9 @@ PYEOF
 
     echo "[dispatch-claude] ASYNC mode | task_id=${CLAUDE_TASK_ID} | name=${TASK_NAME} | pid=${BG_PID} | log=${LOG_FILE}"
     if command -v jq &>/dev/null; then
-        _log_jsonl "$(jq -nc --arg ts "$(date -Iseconds)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "async" --arg pid "${BG_PID}" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,pid:$pid,workdir:$wd}')"
+        _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "dispatch-claude" --arg tid "${CLAUDE_TASK_ID}" --arg name "${TASK_NAME}" --arg mode "async" --arg pid "${BG_PID}" --arg wd "${WORKDIR}" '{ts:$ts,hook:$hook,task_id:$tid,name:$name,mode:$mode,pid:$pid,workdir:$wd}')"
     else
-        _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"async\",\"pid\":\"${BG_PID}\",\"workdir\":\"${WORKDIR}\"}"
+        _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"dispatch-claude\",\"task_id\":\"${CLAUDE_TASK_ID}\",\"name\":\"${TASK_NAME}\",\"mode\":\"async\",\"pid\":\"${BG_PID}\",\"workdir\":\"${WORKDIR}\"}"
     fi
 fi
 

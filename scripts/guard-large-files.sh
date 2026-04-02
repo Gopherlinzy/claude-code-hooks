@@ -41,6 +41,12 @@ if [ -z "${FILE_PATH}" ]; then
     exit 0
 fi
 
+# P2-5: 解析符号链接获取真实路径
+if [ -L "${FILE_PATH}" ]; then
+    REAL_PATH="$(readlink -f "${FILE_PATH}" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "${FILE_PATH}" 2>/dev/null || echo "${FILE_PATH}")"
+    FILE_PATH="${REAL_PATH}"
+fi
+
 # === 规则 1：拦截自动生成文件 ===
 BASENAME=$(basename "${FILE_PATH}")
 case "${BASENAME}" in

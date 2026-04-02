@@ -7,6 +7,9 @@
 
 set -uo pipefail
 
+# === Platform shim (cross-platform compatibility) ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
+
 # === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
 if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
     python3() { PYTHONUTF8=1 python "$@"; }
@@ -26,16 +29,31 @@ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 # === 加载配置文件（CC Hook 子进程不继承 ~/.zshrc 环境变量）===
 _CONF_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/notify.conf"
-if [ -f "${_CONF_FILE}" ]; then
-    # shellcheck source=/dev/null
-    source "${_CONF_FILE}"
-fi
+_safe_source_conf() {
+    local _file="$1"
+    [ -f "${_file}" ] || return 0
+    if grep -qF '$(' "${_file}" 2>/dev/null; then
+        echo "[wait-notify] WARN: ${_file##*/} integrity check failed" >&2
+        return 1
+    fi
+    if grep -qF '`' "${_file}" 2>/dev/null; then
+        echo "[wait-notify] WARN: ${_file##*/} integrity check failed" >&2
+        return 1
+    fi
+    source "${_file}"
+}
+
+_safe_source_conf "${_CONF_FILE}"
+
+# 加载凭证隔离文件
+_SECRETS_FILE="${HOME}/.cchooks/secrets.env"
+_safe_source_conf "${_SECRETS_FILE}"
 
 # === 配置变量（配置文件 > 环境变量 > 默认值）===
 WAIT_SECONDS="${CC_WAIT_NOTIFY_SECONDS:-30}"
 NOTIFY_CHANNEL="${CC_NOTIFY_CHANNEL:-feishu}"
 NOTIFY_TARGET="${CC_NOTIFY_TARGET:-}"
-MARKER_DIR="/tmp/cchooks/wait"
+MARKER_DIR="${CCHOOKS_TMPDIR:-/tmp/cchooks}/wait"
 # === 死循环防护（学习 CC 源码 query/stopHooks.ts 熔断机制）===
 MAX_CONCURRENT_TIMERS=3       # 同一 session 最大并发定时器数
 GLOBAL_COOLDOWN_SECONDS=10    # 全局冷却：10 秒内不重复启动新定时器
@@ -193,11 +211,11 @@ _counter_lock() {
         # Stale lock detection: owner process gone?
         local owner_pid
         owner_pid=$(cat "${lock_dir}/owner" 2>/dev/null || echo "")
-        if [ -n "${owner_pid}" ] && ! kill -0 "${owner_pid}" 2>/dev/null; then
+        if [ -n "${owner_pid}" ] && ! _kill_check "${owner_pid}"; then
             rm -rf "${lock_dir}" 2>/dev/null || true
             continue
         fi
-        sleep 0.05
+        _sleep_frac 0.05
     done
     return 1
 }
@@ -211,7 +229,7 @@ if [ -f "${COUNTER_FILE}" ]; then
     _active_count=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "0")
 fi
 if [ "${_active_count}" -ge "${MAX_CONCURRENT_TIMERS}" ]; then
-    _log_jsonl "{\"ts\":\"$(date -Iseconds)\",\"hook\":\"wait-notify\",\"event\":\"circuit_breaker\",\"session\":\"${SESSION_SHORT}\",\"reason\":\"max_concurrent_timers_${MAX_CONCURRENT_TIMERS}\"}"
+    _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"wait-notify\",\"event\":\"circuit_breaker\",\"session\":\"${SESSION_SHORT}\",\"reason\":\"max_concurrent_timers_${MAX_CONCURRENT_TIMERS}\"}"
     exit 0
 fi
 
@@ -225,19 +243,32 @@ if [ -f "${COOLDOWN_FILE}" ]; then
         if [ "${HOOK_EVENT}" = "PermissionRequest" ] && [ -n "${TOOL_NAME:-}" ]; then
             _UPGRADE_DETAIL="${MARKER_DIR}/${SESSION_SHORT}.detail"
             if [ -f "${_UPGRADE_DETAIL}" ]; then
-                cat > "${_UPGRADE_DETAIL}" <<EOF
-{
-  "session_id": "${SESSION_ID}",
-  "session_short": "${SESSION_SHORT}",
-  "tool_name": "${TOOL_NAME}",
-  "tool_input": $(printf '%s' "${TOOL_INPUT_CMD}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
-  "tool_input_raw": ${TOOL_INPUT_RAW:-null},
-  "hook_event": "${HOOK_EVENT}",
-  "notify_message": $(printf '%s' "${NOTIFY_MESSAGE}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
-  "notify_type": "${NOTIFY_TYPE}",
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+                SESSION_ID="${SESSION_ID}" \
+                SESSION_SHORT="${SESSION_SHORT}" \
+                TOOL_NAME="${TOOL_NAME}" \
+                TOOL_INPUT_CMD="${TOOL_INPUT_CMD}" \
+                HOOK_EVENT="${HOOK_EVENT}" \
+                NOTIFY_MESSAGE="${NOTIFY_MESSAGE}" \
+                NOTIFY_TYPE="${NOTIFY_TYPE}" \
+                _TOOL_INPUT_RAW="${TOOL_INPUT_RAW:-}" \
+                python3 -c "
+import json, os
+d = {
+    'session_id': os.environ.get('SESSION_ID', ''),
+    'session_short': os.environ.get('SESSION_SHORT', ''),
+    'tool_name': os.environ.get('TOOL_NAME', ''),
+    'tool_input': os.environ.get('TOOL_INPUT_CMD', ''),
+    'tool_input_raw': None,
+    'hook_event': os.environ.get('HOOK_EVENT', ''),
+    'notify_message': os.environ.get('NOTIFY_MESSAGE', ''),
+    'notify_type': os.environ.get('NOTIFY_TYPE', ''),
 }
-EOF
+raw = os.environ.get('_TOOL_INPUT_RAW', '')
+if raw:
+    try: d['tool_input_raw'] = json.loads(raw)
+    except: pass
+json.dump(d, open('${_UPGRADE_DETAIL}', 'w'), indent=2, ensure_ascii=False)
+" 2>/dev/null || true
             fi
         fi
         exit 0
@@ -248,9 +279,9 @@ date +%s > "${COOLDOWN_FILE}" 2>/dev/null || true
 # === 杀旧定时器（kill-old-before-new）===
 if [ -f "${PID_FILE}" ]; then
     OLD_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
-    if [ -n "${OLD_PID}" ] && kill -0 "${OLD_PID}" 2>/dev/null; then
+    if [ -n "${OLD_PID}" ] && _kill_check "${OLD_PID}"; then
         # 身份校验：确认是 sleep 进程，防止 PID reuse 误杀
-        OLD_CMD=$(ps -p "${OLD_PID}" -o command= 2>/dev/null || true)
+        OLD_CMD=$(_ps_command_of "${OLD_PID}")
         if echo "${OLD_CMD}" | grep -q "sleep"; then
             kill "${OLD_PID}" 2>/dev/null || true
         fi
@@ -300,24 +331,38 @@ fi
 # 写入等待标记（记录时间戳）
 date +%s > "${MARKER_FILE}"
 
-# === 将上下文信息写入 detail 文件供定时器读取 ===
+# === 将上下文信息写入 detail 文件（python3 安全 JSON 生成）===
 DETAIL_FILE="${MARKER_DIR}/${SESSION_SHORT}.detail"
-cat > "${DETAIL_FILE}" <<EOF
-{
-  "session_id": "${SESSION_ID}",
-  "session_short": "${SESSION_SHORT}",
-  "tool_name": "${TOOL_NAME}",
-  "tool_input": $(printf '%s' "${TOOL_INPUT_CMD}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
-  "tool_input_raw": ${TOOL_INPUT_RAW:-null},
-  "hook_event": "${HOOK_EVENT}",
-  "notify_message": $(printf '%s' "${NOTIFY_MESSAGE}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""'),
-  "notify_type": "${NOTIFY_TYPE}",
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+SESSION_ID="${SESSION_ID}" \
+SESSION_SHORT="${SESSION_SHORT}" \
+TOOL_NAME="${TOOL_NAME}" \
+TOOL_INPUT_CMD="${TOOL_INPUT_CMD}" \
+HOOK_EVENT="${HOOK_EVENT}" \
+NOTIFY_MESSAGE="${NOTIFY_MESSAGE}" \
+NOTIFY_TYPE="${NOTIFY_TYPE}" \
+_TOOL_INPUT_RAW="${TOOL_INPUT_RAW:-}" \
+python3 -c "
+import json, os, sys
+d = {
+    'session_id': os.environ.get('SESSION_ID', ''),
+    'session_short': os.environ.get('SESSION_SHORT', ''),
+    'tool_name': os.environ.get('TOOL_NAME', ''),
+    'tool_input': os.environ.get('TOOL_INPUT_CMD', ''),
+    'tool_input_raw': None,
+    'hook_event': os.environ.get('HOOK_EVENT', ''),
+    'notify_message': os.environ.get('NOTIFY_MESSAGE', ''),
+    'notify_type': os.environ.get('NOTIFY_TYPE', ''),
 }
-EOF
+raw = os.environ.get('_TOOL_INPUT_RAW', '')
+if raw:
+    try: d['tool_input_raw'] = json.loads(raw)
+    except: pass
+json.dump(d, sys.stdout, indent=2, ensure_ascii=False)
+print()
+" > "${DETAIL_FILE}" 2>/dev/null || echo '{"session_id":"'"${SESSION_SHORT}"'","hook_event":"'"${HOOK_EVENT}"'"}' > "${DETAIL_FILE}"
 
 # === 检查任务是否已完成（.done 文件存在则跳过）===
-DONE_DIR="/tmp/cchooks"
+DONE_DIR="${CCHOOKS_TMPDIR:-/tmp/cchooks}"
 if [ -f "${DONE_DIR}/${SESSION_SHORT}.done" ]; then
     # 任务已完成，不需要等待通知
     rm -f "${MARKER_FILE}" "${DETAIL_FILE}" 2>/dev/null || true
@@ -487,7 +532,7 @@ ${FORMATTED_INPUT}
             _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")
             _cnt=$(( _cnt - 1 ))
             [ "${_cnt}" -le 0 ] && rm -f "${COUNTER_FILE}" || echo "${_cnt}" > "${COUNTER_FILE}"
-            rmdir "${MARKER_DIR}/${SESSION_SHORT}.counter.lock" 2>/dev/null || true
+            rm -rf "${MARKER_DIR}/${SESSION_SHORT}.counter.lock" 2>/dev/null || true
         else
             # Fallback: 无锁操作
             _cnt=$(cat "${COUNTER_FILE}" 2>/dev/null || echo "1")

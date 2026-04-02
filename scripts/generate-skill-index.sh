@@ -22,10 +22,22 @@ done < <(find "${SKILLS_DIR}" -name "SKILL.md" -print0 2>/dev/null | sort -z)
 
 CURRENT_COUNT="${#SKILL_PATHS[@]}"
 
-# 读取上次记录的 skill 数量
+# 读取上次记录的 skill 数量（提前，空数组保护需要用）
 PREV_COUNT=0
 if [[ -f "${SENTINEL_FILE}" ]]; then
     PREV_COUNT="$(cat "${SENTINEL_FILE}" 2>/dev/null || echo 0)"
+fi
+
+# 空数组保护（set -u 下空数组触发 unbound variable）
+if [ "${CURRENT_COUNT}" -eq 0 ]; then
+    if [ -f "${INDEX_FILE}" ] && [ "${PREV_COUNT}" = "0" ]; then
+        echo "[generate-skill-index] No skills found. Cache unchanged."
+        exit 0
+    fi
+    echo "# No skills available" > "${INDEX_FILE}"
+    echo "0" > "${SENTINEL_FILE}"
+    echo "[generate-skill-index] No skills found. Empty index written."
+    exit 0
 fi
 
 # 判断是否需要重建：数量变化 OR 有 SKILL.md 比缓存更新

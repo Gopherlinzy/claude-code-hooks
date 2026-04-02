@@ -21,10 +21,27 @@ fi
 # === Load config ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/notify.conf"
-if [ -f "${CONF_FILE}" ]; then
-    # shellcheck disable=SC1090
-    source "${CONF_FILE}"
-fi
+
+# 公用完整性校验函数
+_safe_source() {
+    local _file="$1"
+    [ -f "${_file}" ] || return 0
+    if grep -qF '$(' "${_file}" 2>/dev/null; then
+        echo "[send-notification] WARN: ${_file##*/} contains \$( — skipping" >&2
+        return 1
+    fi
+    if grep -qF '`' "${_file}" 2>/dev/null; then
+        echo "[send-notification] WARN: ${_file##*/} contains backtick — skipping" >&2
+        return 1
+    fi
+    source "${_file}"
+}
+
+_safe_source "${CONF_FILE}"
+
+# 加载凭证隔离文件
+_SECRETS_FILE="${HOME}/.cchooks/secrets.env"
+_safe_source "${_SECRETS_FILE}"
 
 CC_NOTIFY_BACKEND="${CC_NOTIFY_BACKEND:-auto}"
 
@@ -124,7 +141,7 @@ _notify_bark() {
         return 1
     fi
     local encoded_title encoded_msg
-    encoded_title=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${title}'))" 2>/dev/null || echo "${title}")
+    encoded_title=$(CC_BARK_TITLE="${title}" python3 -c "import urllib.parse,os; print(urllib.parse.quote(os.environ.get('CC_BARK_TITLE','Claude Code')))" 2>/dev/null || echo "${title}")
     encoded_msg=$(printf '%s' "${msg}" | python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.stdin.read()))" 2>/dev/null || echo "${msg}")
     curl -s "${url}/${encoded_title}/${encoded_msg}" --connect-timeout 3 --max-time 8 >/dev/null 2>&1 || return 1
 }
@@ -194,7 +211,8 @@ _notify_command() {
         echo "[send-notification] WARN: command backend skipped — CC_NOTIFY_COMMAND not set" >&2
         return 1
     fi
-    printf '%s' "${msg}" | eval "${cmd}" >/dev/null 2>&1 || return 1
+    # P1-A: 替代 eval，使用 bash -c 隔离执行
+    printf '%s' "${msg}" | bash -c "${cmd}" >/dev/null 2>&1 || return 1
 }
 
 # === Public API ===

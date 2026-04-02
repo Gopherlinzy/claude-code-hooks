@@ -13,6 +13,9 @@
 
 set -uo pipefail
 
+# === Platform shim (cross-platform compatibility) ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
+
 # === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
 if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
     python3() { PYTHONUTF8=1 python "$@"; }
@@ -33,11 +36,19 @@ if [[ ! -f "${WORKDIR}/.claude-dispatched" ]]; then
 fi
 
 # 读取 PID
-PID=$(python3 -c "import json; print(json.load(open('${WORKDIR}/.claude-dispatched'))['pid'])" 2>/dev/null || echo "0")
-TASK_ID=$(python3 -c "import json; print(json.load(open('${WORKDIR}/.claude-dispatched'))['task_id'])" 2>/dev/null || echo "unknown")
+PID=$(WORKDIR="${WORKDIR}" python3 -c "
+import json, os
+p = os.path.join(os.environ['WORKDIR'], '.claude-dispatched')
+print(json.load(open(p))['pid'])
+" 2>/dev/null || echo "0")
+TASK_ID=$(WORKDIR="${WORKDIR}" python3 -c "
+import json, os
+p = os.path.join(os.environ['WORKDIR'], '.claude-dispatched')
+print(json.load(open(p))['task_id'])
+" 2>/dev/null || echo "unknown")
 
 # 检查 .done 文件（Stop Hook 完成信号）
-DONE_FILE="/tmp/cchooks/${TASK_ID}.done"
+DONE_FILE="${CCHOOKS_TMPDIR:-/tmp/cchooks}/${TASK_ID}.done"
 if [[ -f "${DONE_FILE}" ]]; then
     STATUS="completed"
     DETAILS="task finished (stop hook fired)"
@@ -52,15 +63,11 @@ if [[ -f "${DONE_FILE}" ]]; then
 fi
 
 # 检查 PID 存活
-if kill -0 "${PID}" 2>/dev/null; then
+if _kill_check "${PID}"; then
     # PID 存活
     if [[ -f "${WORKDIR}/.claude-progress.md" ]]; then
         # 计算 mtime 年龄
-        if [[ "$(uname)" == "Darwin" ]]; then
-            MTIME=$(stat -f %m "${WORKDIR}/.claude-progress.md" 2>/dev/null || echo "0")
-        else
-            MTIME=$(stat -c %Y "${WORKDIR}/.claude-progress.md" 2>/dev/null || echo "0")
-        fi
+        MTIME=$(_stat_mtime "${WORKDIR}/.claude-progress.md")
         NOW=$(date +%s)
         MTIME_AGE=$(( NOW - MTIME ))
         STEPS_DONE=$(grep -c '\[x\]' "${WORKDIR}/.claude-progress.md" 2>/dev/null || echo "0")
@@ -76,11 +83,30 @@ else
     STATUS="dead"
     DETAILS="PID ${PID} not alive"
     # 检查是否有日志可读
-    LOG_FILE="/tmp/cchooks/${TASK_ID}.log"
+    LOG_FILE="${CCHOOKS_TMPDIR:-/tmp/cchooks}/${TASK_ID}.log"
     if [[ -f "${LOG_FILE}" ]]; then
         LOG_SIZE=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
         DETAILS="${DETAILS}, log ${LOG_SIZE} bytes"
     fi
 fi
 
-echo "{\"status\":\"${STATUS}\",\"details\":\"${DETAILS}\",\"pid\":${PID},\"task_id\":\"${TASK_ID}\",\"mtime_age_s\":${MTIME_AGE:-0},\"steps\":\"${STEPS_DONE}/${STEPS_TOTAL}\",\"workdir\":\"${WORKDIR}\"}"
+STATUS="${STATUS}" \
+PID="${PID}" \
+TASK_ID="${TASK_ID}" \
+MTIME_AGE="${MTIME_AGE:-0}" \
+STEPS_DONE="${STEPS_DONE}" \
+STEPS_TOTAL="${STEPS_TOTAL}" \
+WORKDIR="${WORKDIR}" \
+python3 -c "
+import json, sys, os
+print(json.dumps({
+    'status': os.environ.get('STATUS', 'unknown'),
+    'details': sys.stdin.read().strip(),
+    'pid': int(os.environ.get('PID', '0')),
+    'task_id': os.environ.get('TASK_ID', 'unknown'),
+    'mtime_age_s': int(os.environ.get('MTIME_AGE', '0')),
+    'steps': os.environ.get('STEPS_DONE', '0') + '/' + os.environ.get('STEPS_TOTAL', '?'),
+    'workdir': os.environ.get('WORKDIR', '.')
+}, ensure_ascii=False))
+" <<< "${DETAILS}" 2>/dev/null \
+|| echo '{"status":"unknown","details":"output-error"}'

@@ -1,4 +1,5 @@
 notify.conf
+secrets.env
 scripts/safety-rules.conf
 *.log
 *.done

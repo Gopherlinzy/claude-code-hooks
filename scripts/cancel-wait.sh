@@ -7,6 +7,9 @@
 
 set -uo pipefail
 
+# === Platform shim (cross-platform compatibility) ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
+
 # === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
 if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
     python3() { PYTHONUTF8=1 python "$@"; }
@@ -43,7 +46,7 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_TASK_ID:-unknown}}"
 SESSION_SHORT="${SESSION_ID:0:8}"
 
 # === 等待标记目录 ===
-MARKER_DIR="/tmp/cchooks/wait"
+MARKER_DIR="${CCHOOKS_TMPDIR:-/tmp/cchooks}/wait"
 
 # === 删除等待标记（如果存在）===
 MARKER_FILE="${MARKER_DIR}/${SESSION_SHORT}.waiting"
@@ -68,9 +71,9 @@ fi
 # === 主动 kill 后台定时器进程（P1 加固）===
 if [ -f "${PID_FILE}" ]; then
     TIMER_PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
-    if [ -n "${TIMER_PID}" ] && kill -0 "${TIMER_PID}" 2>/dev/null; then
+    if [ -n "${TIMER_PID}" ] && _kill_check "${TIMER_PID}"; then
         # 身份校验：确认是 sleep 进程，防止 PID reuse 误杀
-        TIMER_CMD=$(ps -p "${TIMER_PID}" -o command= 2>/dev/null || true)
+        TIMER_CMD="$(_ps_command_of "${TIMER_PID}")"
         if echo "${TIMER_CMD}" | grep -q "sleep"; then
             kill "${TIMER_PID}" 2>/dev/null || true
         fi
