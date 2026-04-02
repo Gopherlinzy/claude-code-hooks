@@ -1,199 +1,225 @@
 ---
 name: claude-code-hooks
-description: Production-ready Claude Code hooks for task lifecycle, security gates, and multi-channel notifications.
-version: 2.0.0
+description: Keep Claude Code on a leash — task notifications, security gates, and cross-platform hooks.
+version: 3.0.0
 ---
 
-# Claude Code Hooks
+# 🦞 Claude Code Hooks
 
-A production-ready collection of [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) that transform Claude Code from a bare CLI into a managed, observable, and secure development environment.
+> "I gave Claude Code `sudo` access once. Once."
 
-## What This Solves
+A battle-tested collection of [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) that adds guardrails, notifications, and sanity to your AI coding assistant — so you can walk away from the terminal without walking into disaster.
 
-| Problem | Solution |
-|---------|----------|
-| **Silent completion** — Tasks finish, you don't know | 🔔 Stop hook → push notification |
-| **Permission stalls** — Claude waits, you're away | ⏰ Wait-timeout → alert after 30s |
-| **Dangerous commands** — No guardrails against `rm -rf /` | 🛡️ Safety gate → auto-block |
-| **Large file waste** — Reads 10k-line generated files | 📏 File guard → deny noisy reads |
-| **Orphan processes** — Async tasks hang forever | 🧹 Reaper → auto-cleanup |
-| **No progress visibility** — Black box execution | 📊 Dispatch → progress tracking |
+## The Problem
+
+You fire up Claude Code, assign it a complex task, and go grab coffee. When you come back:
+
+- ☕ Your task finished 20 minutes ago. Nobody told you.
+- 🔐 Claude's been politely waiting for permission. For 20 minutes. In silence.
+- 💀 Or worse — it ran `rm -rf` on something it shouldn't have.
+- 📖 It burned half your context window reading a 15,000-line `bundle.min.js`.
+- 👻 Three orphan processes are still alive from yesterday's async tasks.
+
+**This repo fixes all of that.**
+
+## What's in the Box
+
+| Hook | Trigger | What it actually does |
+|------|---------|----------------------|
+| 🔔 **cc-stop-hook.sh** | Task ends | Pings you on Feishu/Slack/Telegram/etc. No more staring at terminals. |
+| ⏰ **wait-notify.sh** | Needs permission | "Hey, Claude's been waiting for you for 30 seconds..." |
+| 🛑 **cancel-wait.sh** | You respond | Cancels the nag. It knows you're back. |
+| 🛡️ **cc-safety-gate.sh** | Runs bash | Blocks `rm -rf /`, `sudo`, `eval`, pipe-to-shell, and [22 other patterns](#safety-gate-patterns). |
+| 📏 **guard-large-files.sh** | Reads files | "No, you don't need to read `node_modules/`. Trust me." |
+| 🚀 **dispatch-claude.sh** | You | Spawn isolated sub-tasks with git worktree, progress tracking, the works. |
+| 📊 **check-claude-status.sh** | You | "Is that thing still running?" Quick answer. |
+| 🧹 **reap-orphans.sh** | Cron / manual | Finds zombie Claude processes and puts them down humanely. |
+| 📚 **generate-skill-index.sh** | Lazy | Builds a skill directory so Claude knows what tools it has. |
 
 ## Quick Start
 
-### One-Line Install
+### One Line, Zero Regrets
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
 ```
 
-> 🇨🇳 **China / Slow GitHub?** Use mirror:
+> 🇨🇳 **In China / GitHub is slow?**
 > ```bash
 > curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
 > ```
 
-The installer walks you through **6 steps**:
+The installer does everything:
 
 ```
-[1/6] Checking environment...        ← Verifies bash, node, curl, python3
-[2/6] Installing hook scripts...     ← Clones repo → copies scripts
-[3/6] Select hook modules...         ← Interactive TUI checkbox selector
-[4/6] Injecting hooks into settings  ← Deep-merges into settings.json (non-destructive)
-[5/6] Configure notifications...     ← Set up Feishu / Slack / Telegram / etc.
-[6/6] Verifying installation...      ← Validates all scripts + permissions
+[1/6] Environment check     ← bash, node, python3, curl — got it?
+[2/6] Install scripts        ← Clone → copy → chmod. Done.
+[3/6] Pick your modules      ← TUI with checkboxes! Very fancy.
+[4/6] Patch settings.json    ← Deep merge. Your existing hooks? Untouched.
+[5/6] Notification setup     ← Feishu, Slack, Telegram, Bark, Discord...
+[6/6] Verify                 ← Green checkmarks or we roll back.
 ```
-
-**Module selector** (Step 3):
 
 ```
   ↑↓ navigate  ␣ toggle  a all/none  Enter confirm
 
-  ❯ [✔] Stop notification     Notify when Claude Code task completes
-    [✔] Safety gate (Bash)    Block dangerous bash commands
-    [✔] Large file guard      Prevent reading auto-generated/noise files
-    [✔] Wait notification     Notify on permission prompts & waits
-    [✔] Cancel wait           Dismiss notification on user activity
+  ❯ [✔] Stop notification       Because silence is not golden
+    [✔] Safety gate (Bash)       Because rm -rf / is never the answer
+    [✔] Large file guard         Because bundle.min.js is not light reading
+    [✔] Wait notification        Because Claude is too polite to yell
+    [✔] Cancel wait              Because you came back, good human
 ```
 
-**Key features of the installer:**
-- 🔀 **Deep merge** — preserves your existing `settings.json` hooks (won't overwrite custom rules)
-- 🔒 **Atomic writes** — tmp → validate → mv (no corruption on crash/Ctrl+C)
-- 📋 **Diff preview** — shows exact changes before modifying settings.json
-- 🔄 **Rollback** — auto-restores backup on failure
-
-### Installer Commands
+### Installer Tricks
 
 ```bash
-./install.sh                  # Interactive install (default)
-./install.sh --non-interactive  # CI/automation mode (all defaults)
-./install.sh --status         # Show current installation status
-./install.sh --update         # Update scripts only, keep config
-./install.sh --uninstall      # Remove hooks from settings.json
-./install.sh --uninstall --purge  # Full removal including notify.conf
+./install.sh                    # Interactive install
+./install.sh --non-interactive  # CI mode — all modules, no questions
+./install.sh --status           # "Am I installed correctly?"
+./install.sh --update           # Update scripts, keep your config
+./install.sh --uninstall        # Clean exit
+./install.sh --uninstall --purge  # Nuclear option
 ```
 
-### Alternative: Manual Install
+### DIY Install (I Don't Trust Pipe-to-Bash)
+
+Fair. Respect.
 
 ```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 cd claude-code-hooks && ./install.sh
 ```
 
-Or fully manual (no installer):
+Or fully manual, no installer at all:
 ```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 mkdir -p ~/.claude/scripts/claude-hooks
 cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
 chmod +x ~/.claude/scripts/claude-hooks/*.sh
-# Then manually edit ~/.claude/settings.json — see "Hook Registration" below
+# Then hand-edit ~/.claude/settings.json — see Hook Registration below
 ```
 
 ## Platform Support
 
-### 🍎 macOS
+| Platform | Status | Notes |
+|----------|--------|-------|
+| 🍎 **macOS** | ✅ Full support | Needs bash 4.0+ (`brew install bash` if stuck on 3.2) |
+| 🐧 **Linux** | ✅ Full support | `apt install bash curl python3 jq` and you're golden |
+| 🪟 **WSL2** | ✅ Full support | It's just Linux with extra steps |
+| 🪟 **Git Bash** | ⚠️ Hooks work | Background timers unreliable. Notifications + safety gate work fine. |
+| 🪟 **PowerShell** | ❌ | Use WSL2. Seriously. |
 
-Works out of the box. One caveat: macOS ships bash 3.2, but hooks need 4.0+.
+### v3.0.0: Cross-Platform Shim
 
-```bash
-bash --version           # Check — if < 4.0:
-brew install bash        # Upgrade
-```
-
-### 🐧 Linux
-
-```bash
-sudo apt-get install -y bash curl python3 jq   # Debian/Ubuntu
-# Then run the one-liner install above
-```
-
-### 🪟 Windows
-
-**WSL2 (Recommended):** Full functionality, works like native Linux.
-
-```powershell
-wsl --install -d Ubuntu   # PowerShell (Admin)
-```
-```bash
-# Inside WSL2:
-sudo apt-get install -y nodejs jq python3 curl
-curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
-```
-
-**Git Bash (Limited):** Hooks work, but background timers and orphan reaping are less reliable.
+New in v3: `platform-shim.sh` provides portable replacements for platform-specific commands. All hook scripts automatically use the shim — no manual configuration needed.
 
 ```bash
-# In Git Bash:
-git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-cd claude-code-hooks && ./install.sh
+# These just work everywhere now:
+_date_iso          # date -Iseconds (broken on MSYS2)
+_kill_check $PID   # kill -0 (not on Git Bash)
+_ps_command_of $PID  # ps -p PID -o command= (ditto)
+_stat_mtime $FILE  # stat -f %m / stat -c %Y
+_env_clean cmd     # env -i (Windows? What's that?)
+_sleep_frac 0.05   # Fractional sleep (MSYS2 says no)
 ```
 
-> **Git Bash notes:**
-> - No `jq` needed — all scripts auto-fallback to Python for JSON parsing
-> - Use Windows-style paths in settings.json: `bash /c/Users/USERNAME/.claude/scripts/claude-hooks/cc-stop-hook.sh`
-> - Background timers (`wait-notify.sh`) may be unreliable if Git Bash window is closed
-> - For full task lifecycle management, use WSL2
+## Post-Install: Set Up Notifications
 
-## Post-Install Configuration
-
-### 1. Configure Notification Backend
+Edit `notify.conf` — this is where hook subprocesses look for config (**they don't inherit your shell env**):
 
 ```bash
-# Edit notify.conf (hook subprocesses do NOT inherit ~/.zshrc env vars!)
 vim ~/.claude/scripts/claude-hooks/notify.conf
 ```
 
 ```bash
-CC_NOTIFY_BACKEND=auto          # Discover all backends, broadcast to all
-CC_WAIT_NOTIFY_SECONDS=30       # Seconds before wait-timeout alert
+CC_NOTIFY_BACKEND=auto          # Auto-discover all configured backends
+CC_WAIT_NOTIFY_SECONDS=30       # How long before "hey, Claude's waiting"
 
-# Enable one or more backends:
-NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+# Uncomment the ones you want:
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
 # CC_BARK_URL=https://api.day.app/YOUR_KEY
 # CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
 # CC_TELEGRAM_CHAT_ID=987654321
+# CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-### 2. Test
+> 🔒 **Secrets management (v3.0.0):** For sensitive URLs/tokens, put them in `~/.cchooks/secrets.env` (chmod 600) instead of `notify.conf`. The scripts auto-load both, with integrity checks.
+
+Test it:
+```bash
+~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Claude Code Hooks! 🦞"
+```
+
+## 9 Notification Backends
+
+**Broadcast mode** (default): fires all configured backends simultaneously. One failing? Others don't care.
+
+| Backend | Config Variable | What |
+|---------|----------------|------|
+| **Feishu** 飞书 | `NOTIFY_FEISHU_URL` | Webhook (supports HMAC signing) |
+| **WeCom** 企业微信 | `NOTIFY_WECOM_URL` | Group bot webhook |
+| **Slack** | `CC_SLACK_WEBHOOK_URL` | Incoming Webhook |
+| **Telegram** | `CC_TELEGRAM_BOT_TOKEN` + `CHAT_ID` | Bot API |
+| **Discord** | `CC_DISCORD_WEBHOOK_URL` | Webhook |
+| **Bark** | `CC_BARK_URL` | iOS push — [Bark](https://github.com/Finb/Bark) |
+| **Webhook** | `CC_WEBHOOK_URL` | Any HTTP endpoint you fancy |
+| **Command** | `CC_NOTIFY_COMMAND` | Pipe message to any CLI tool |
+| **OpenClaw** | `CC_NOTIFY_TARGET` | Route through OpenClaw channels |
 
 ```bash
-~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Claude Code Hooks!"
+# Example: Feishu + Bark simultaneously
+CC_NOTIFY_BACKEND=auto
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+CC_BARK_URL=https://api.day.app/YOUR_KEY
+# → Both get every notification. Redundancy is love.
 ```
 
-### 3. Restart Claude Code
+## Safety Gate Patterns
 
-New hooks load when a new `claude` session starts. Existing sessions won't pick up changes.
+The safety gate (`cc-safety-gate.sh`) blocks these on sight:
 
-## Hooks Reference
+| Category | Examples |
+|----------|---------|
+| **Destructive** | `rm -rf /`, `rm -rf ~/`, `mkfs`, `dd if=` |
+| **Privilege escalation** | `sudo`, `/usr/bin/sudo`, `\sudo`, `chmod 777` |
+| **Code injection** | `eval`, `source <(...)`, `. <(...)`, `base64 ... \| bash` |
+| **Remote execution** | `curl \| sh`, `wget \| bash`, download-and-exec chains |
+| **Wrapper bypass** | `bash -c "rm ..."`, `sh -c "sudo ..."`, `python3 -c "os.system(...)"` |
+| **Path protection** | Writes to `.ssh/`, `SOUL.md`, `IDENTITY.md`, `/etc/`, `/System/` |
 
-### Core Hooks
+Plus external rules via `safety-rules.conf` for your own patterns.
 
-| Hook | Event | What It Does |
-|------|-------|-------------|
-| 🔔 **cc-stop-hook.sh** | `Stop` | Sends notification on task completion. Dedup lock (60s TTL), session name detection, audit log. |
-| ⏰ **wait-notify.sh** | `PermissionRequest` `Notification` | Background timer — if you don't respond in N seconds, sends an alert. Non-blocking. |
-| 🛑 **cancel-wait.sh** | `PostToolUse` `UserPromptSubmit` | Cancels pending wait-timeout when you respond. 5s grace period prevents false cancellation. |
-| 🛡️ **cc-safety-gate.sh** | `PreToolUse` (Bash) | Blocks dangerous commands: `rm -rf /`, `sudo`, `chmod 777`, pipe-to-shell, etc. |
-| 📏 **guard-large-files.sh** | `PreToolUse` (Read/Edit/Write) | Blocks auto-generated files (`*.pb.go`, `*.min.js`), noise dirs (`node_modules/`, `vendor/`), files >1000 lines. |
+> ⚠️ **Honest disclaimer:** Blacklists are inherently bypassable. A determined attacker (or a creative LLM) can find ways around them. This is a speed bump, not a wall. Use `--permission-mode` for real security boundaries.
 
-### Extended Hooks
+## Architecture
 
-| Hook | What It Does |
-|------|-------------|
-| 🚀 **dispatch-claude.sh** | Task dispatch wrapper with git worktree isolation, progress tracking, env sanitization. |
-| 📊 **check-claude-status.sh** | Query dispatched task status: `running` / `completed` / `dead` / `unknown`. |
-| 🧹 **reap-orphans.sh** | Scans for timed-out Claude processes and terminates them safely (PID reuse protection). |
-| 📚 **generate-skill-index.sh** | Generates skill index from `skills/*/SKILL.md` for system prompt injection. |
+```
+Claude Code Session
+  │
+  ├── PreToolUse ─────┬── cc-safety-gate.sh ── "Nope, not running that."
+  │                   └── guard-large-files.sh ── "Put down the bundle.min.js."
+  │
+  ├── PermissionRequest ── wait-notify.sh ──→ ⏱️ 30s ──→ 📱 "Come back!"
+  │
+  ├── Notification ─────── wait-notify.sh ──→ ⏱️ 30s ──→ 📱 "Still waiting..."
+  │
+  ├── PostToolUse ──────── cancel-wait.sh ──→ ⏱️❌ "Never mind, they're here."
+  │
+  ├── UserPromptSubmit ─── cancel-wait.sh ──→ ⏱️❌ "They typed something!"
+  │
+  └── Stop ─────────────── cc-stop-hook.sh ──→ 📱 "Done! Here's what happened."
+```
 
-## Hook Registration
+## Hook Registration (settings.json)
 
-The installer auto-generates this in `settings.json`. For manual setup:
+The installer handles this, but for the manual crowd:
 
 ```json
 {
   "hooks": {
     "Stop": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh", "timeout": 10 }] }
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh", "timeout": 15 }] }
     ],
     "PreToolUse": [
       { "matcher": "Read|Edit|Write", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/guard-large-files.sh", "timeout": 5 }] },
@@ -203,7 +229,7 @@ The installer auto-generates this in `settings.json`. For manual setup:
       { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/wait-notify.sh", "timeout": 5 }] }
     ],
     "Notification": [
-      { "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/wait-notify.sh", "timeout": 5 }] }
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/wait-notify.sh", "timeout": 5 }] }
     ],
     "PostToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cancel-wait.sh", "timeout": 3 }] }
@@ -215,165 +241,99 @@ The installer auto-generates this in `settings.json`. For manual setup:
 }
 ```
 
-> **Tip:** Set Notification matcher to `"permission_prompt"` (not `"*"`). Using `"*"` also matches `idle_prompt`, which fires after task completion and causes false "waiting for action" alerts.
+## Hardening
 
-## Architecture
+Things we're proud of:
 
-```
-Claude Code Session
-  │
-  ├── PreToolUse ─────┬── cc-safety-gate.sh (Bash commands)
-  │                   └── guard-large-files.sh (Read/Edit/Write)
-  │
-  ├── PermissionRequest ── wait-notify.sh → [30s timer] → notification
-  │
-  ├── Notification ─────── wait-notify.sh → [30s timer] → notification
-  │   (permission_prompt)
-  │
-  ├── PostToolUse ──────── cancel-wait.sh → [cancel timer]
-  │
-  ├── UserPromptSubmit ─── cancel-wait.sh → [cancel timer]
-  │
-  └── Stop ─────────────── cc-stop-hook.sh → .done file + notification
-```
-
-## Notification Backends
-
-**9 backends** with auto-discovery broadcast. Configure in `notify.conf`:
-
-| Backend | Config Variable | Protocol |
-|---------|----------------|----------|
-| **Auto** | `CC_NOTIFY_BACKEND=auto` | Discover all configured, broadcast to all |
-| **Feishu** | `NOTIFY_FEISHU_URL` | Webhook (optional HMAC signing) |
-| **WeCom** | `NOTIFY_WECOM_URL` | 企业微信 group bot webhook |
-| **Slack** | `CC_SLACK_WEBHOOK_URL` | Incoming Webhook |
-| **Telegram** | `CC_TELEGRAM_BOT_TOKEN` + `CC_TELEGRAM_CHAT_ID` | Bot API |
-| **Discord** | `CC_DISCORD_WEBHOOK_URL` | Discord Webhook |
-| **Bark** | `CC_BARK_URL` | iOS push ([Bark](https://github.com/Finb/Bark)) |
-| **Webhook** | `CC_WEBHOOK_URL` | Any HTTP endpoint |
-| **Command** | `CC_NOTIFY_COMMAND` | Any CLI tool (message via $1) |
-| **OpenClaw** | `CC_NOTIFY_TARGET` | Feishu / Telegram / any OpenClaw channel |
-
-**Broadcast mode** (default): each backend fires independently — one failure doesn't block others.
-
-```bash
-# Example: simultaneous Feishu + Bark
-CC_NOTIFY_BACKEND=auto
-NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-CC_BARK_URL=https://api.day.app/YOUR_KEY
-```
+- 🛟 **Fail-open everywhere** — A hook crash never blocks Claude Code. Ever.
+- 📝 **JSONL audit log** — Everything goes to `~/.cchooks/logs/hooks-audit.jsonl`
+- 🔒 **Secrets isolation** — Credentials live in `~/.cchooks/secrets.env` (600), not in script dirs
+- 🧬 **Integrity checks** — `source` won't load files containing `$(` or backticks
+- ⚛️ **Atomic writes** — tmp → validate → mv (crash-safe)
+- 🔑 **API key quarantine** — Hooks unset `ANTHROPIC_API_KEY` before doing anything
+- 🌍 **Cross-platform shim** — `platform-shim.sh` makes everything work on macOS/Linux/WSL2/Git Bash
 
 ## Claude Code Hook Events
 
-| Event | When It Fires | `matcher` Matches Against |
-|-------|--------------|--------------------------|
-| **PreToolUse** | Before a tool executes | Tool name (`Bash`, `Read`, etc.) |
-| **PostToolUse** | After a tool executes (success) | Tool name |
-| **PostToolUseFailure** | After a tool executes (failure) | Tool name |
-| **Stop** | Session/task ends | Stop reason |
-| **Notification** | CC sends a notification | `permission_prompt` / `idle_prompt` / `auth_success` / `elicitation_dialog` |
-| **PermissionRequest** | CC asks user for permission | Tool name |
-| **UserPromptSubmit** | User submits input | `*` |
+| Event | When | Matcher matches... |
+|-------|------|-------------------|
+| **PreToolUse** | Before tool runs | Tool name (`Bash`, `Read`, etc.) |
+| **PostToolUse** | After tool succeeds | Tool name |
+| **Stop** | Session ends | Stop reason |
+| **Notification** | CC sends notification | `permission_prompt` / `idle_prompt` / etc. |
+| **PermissionRequest** | CC needs approval | Tool name |
+| **UserPromptSubmit** | You type something | `*` |
 
-### Tool Names (for matchers)
+**Matcher syntax:** `"*"` (all) · `"Bash"` (exact) · `"Read|Edit|Write"` (OR) · `""` (don't — undefined behavior)
 
-`Bash` · `Read` · `Write` · `Edit` · `MultiEdit` · `Glob` · `Grep` · `WebFetch` · `WebSearch` · `Task` · `NotebookRead` · `NotebookEdit` · `TodoWrite`
+## vs Claude Code `--channels`
 
-### Matcher Syntax
-
-- `"*"` — match all
-- `"Bash"` — exact match
-- `"Read|Edit|Write"` — pipe-separated OR
-- `""` — ⚠️ **avoid** (undefined behavior, may prevent hooks from firing)
-
-## Comparison with Claude Code `--channels`
-
-| Feature | CC `--channels` (Preview) | These Hooks |
-|---------|--------------------------|-------------|
-| Notification channels | claude.ai mobile only | 9 backends (Feishu/Slack/Telegram/etc.) |
-| Multi-channel broadcast | ❌ | ✅ |
-| Permission approval | ✅ Approve from phone | Notification only |
-| Task completion alerts | ❌ | ✅ |
-| Security gates | ❌ | ✅ |
-| Large file guards | ❌ | ✅ |
+| | `--channels` (Preview) | These Hooks |
+|-|----------------------|-------------|
+| Notification channels | claude.ai mobile | 9 backends |
+| Multi-channel | ❌ | ✅ Broadcast |
+| Remote approval | ✅ | Notification only |
+| Security gates | ❌ | ✅ 22 patterns |
+| File guards | ❌ | ✅ |
 | Progress tracking | ❌ | ✅ |
-| Dependencies | MCP + claude.ai account | bash + curl |
+| Dependencies | MCP + claude.ai | bash + curl |
 
-No conflict — they complement each other.
-
-## Hardening
-
-- **Fail-open:** Every hook declares `FAIL_MODE=open` — hook crash never blocks Claude Code
-- **Audit log:** Structured JSONL at `~/.cchooks/logs/hooks-audit.jsonl`
-- **Atomic writes:** All JSON writes use tmp → validate → mv
-- **Dedup locks:** Stop hook uses TTL-based lock to prevent duplicate notifications
-- **Externalized rules:** `cc-safety-gate.sh` loads custom rules from `safety-rules.conf`
-
-## Changelog
-
-### v2.0.0 (2026-04-02)
-
-**🚀 Interactive Installer + Security Audit**
-
-- **`install.sh` v2**: Complete rewrite with 6-step interactive flow
-  - TUI checkbox module selector (powered by `tools/select-modules.js`)
-  - Deep-merge hooks into `settings.json` (won't overwrite user customizations)
-  - `--status` / `--update` / `--uninstall` / `--purge` subcommands
-  - Atomic writes with rollback on failure
-  - Unified trap management (EXIT/INT/TERM/ERR)
-  - `curl | bash` compatible with fd3 tty input
-
-- **Security audit (P0+P1+P2)**:
-  - `guard-large-files.sh`: Fixed deny format (`decision`+`reason` instead of `hookSpecificOutput`)
-  - `cc-stop-hook.sh`: Dedup lock TTL 60→300s, proper cleanup
-  - `send-notification.sh`: 7× curl calls hardened with `--connect-timeout 3 --max-time 8`
-  - `dispatch-claude.sh`: git add excludes `.env*/key/pem/secret`
-  - `cc-safety-gate.sh`: Expanded blacklist patterns
-  - `wait-notify.sh`: Fixed NOTIFY_MESSAGE/TYPE + cooldown period
-  - `reap-orphans.sh`: 7-day .done cleanup + PID reuse protection
-
-### v1.3.1 (2026-04-01)
-
-**🪟 Windows Git Bash Compatibility**
-
-- Python3 shim: auto-detect `python` when `python3` missing
-- jq fallback: 5 scripts fallback to Python for JSON parsing
-- Fixed matcher `""` → `"*"` (empty string caused hooks to never fire)
-- Fixed `cc-safety-gate.sh` regex false positives (`curl.*|.*sh`)
-- `.gitattributes`: Force LF line endings for `.sh` files
-
-### v1.3.0 (2026-03-31)
-
-**📡 Broadcast Mode**
-
-- `send-notification.sh` v2: Auto-discover + broadcast to all configured backends
-- `cancel-wait.sh`: 5s grace period
-- `wait-notify.sh`: Fixed `exit 0` killing Notification events
-
-### v1.2.0 (2026-03-31)
-
-Feishu & WeCom webhook + decoupled from OpenClaw.
-
-### v1.1.0 (2026-03-30)
-
-Git worktree isolation (P0 security).
-
-### v1.0.0 (2026-03-29)
-
-Initial release.
+They're complementary, not competing. Use both.
 
 ## Dependencies
 
-| Dependency | Required | Purpose |
-|-----------|----------|---------|
-| `bash` 4.0+ | ✅ | All hook scripts |
+| What | Required? | Why |
+|------|-----------|-----|
+| `bash` 4.0+ | ✅ | Everything is bash. macOS ships 3.2 — `brew install bash` |
 | `node` 14+ | ✅ | Installer TUI + hooks merge |
-| `curl` | ✅ | Notification delivery |
-| `python3` | ✅ | JSON escaping (auto-detects `python` on Windows) |
-| `jq` | Recommended | JSON parsing (graceful Python fallback) |
-| `git` | Optional | Worktree isolation in dispatch |
-| `openssl` | Optional | HMAC-SHA256 signing for Feishu |
+| `curl` | ✅ | Sending notifications |
+| `python3` | ✅ | JSON escaping (detects `python` on Windows) |
+| `jq` | Recommended | JSON parsing (graceful Python fallback without it) |
+| `git` | Optional | Worktree isolation |
+| `openssl` | Optional | HMAC signing for Feishu |
+
+## Changelog
+
+### v3.0.0 (2026-04-02)
+
+**🛡️ Security Hardening + Cross-Platform Shim + 34 Fixes**
+
+The "we hired a security auditor and they had opinions" release.
+
+- **Security:**
+  - Credentials moved from `notify.conf` → `~/.cchooks/secrets.env` (chmod 600)
+  - Integrity checks before `source` (rejects files with `$(` or backticks)
+  - `eval` replaced with `bash -c` in notification command backend
+  - All shell→python injection surfaces eliminated (everything uses `os.environ` now)
+  - JSON generation via `python3 json.dump` instead of heredoc string interpolation
+  - Safety gate: +8 blacklist patterns (`eval`, `source <()`, `base64|sh`, `bash -c`, `\sudo`, etc.)
+
+- **Cross-platform:**
+  - New `platform-shim.sh` with 8 portable functions
+  - All 30 platform-specific calls replaced with shim equivalents
+  - `CCHOOKS_TMPDIR` configurable everywhere (11 references)
+  - Git Bash: auto-fallback for `kill -0`, `ps`, `stat`, `date -I`, `sleep`, `env -i`
+
+- **Robustness:**
+  - `cc-safety-gate.sh`: removed `set -e` (was causing false-positive blocks)
+  - `wait-notify.sh`: `rmdir` → `rm -rf` (lock release fix)
+  - `generate-skill-index.sh`: empty skills dir no longer crashes
+  - Session search: `grep -rl` pre-filter (fast even with 1000+ sessions)
+  - `find -print0 | while read` for word-splitting safety
+
+### v2.0.0 (2026-04-02)
+
+**🚀 Interactive Installer**
+
+- TUI module selector, deep-merge settings.json, atomic writes, rollback on failure
+- Security audit: hardened curl timeouts, expanded blacklist, dedup locks
+
+### v1.3.1 (2026-04-01) · Windows Git Bash compatibility
+### v1.3.0 (2026-03-31) · Broadcast mode — multi-channel notifications
+### v1.2.0 (2026-03-31) · Feishu & WeCom webhooks
+### v1.1.0 (2026-03-30) · Git worktree isolation
+### v1.0.0 (2026-03-29) · Initial release
 
 ## License
 
-MIT
+MIT — Do whatever you want. Just don't `rm -rf /`.

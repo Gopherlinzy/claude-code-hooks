@@ -1,253 +1,295 @@
-# Claude Code Hooks — 任务生命周期与安全管理工具集
+# 🦞 Claude Code Hooks
 
-一套生产级 Claude Code 钩子（Hooks），将 Claude Code 从裸 CLI 升级为可管理、可观测、安全的开发环境。
+> "我给 Claude Code 开了 sudo 权限。就一次。就那一次。"
 
-## 解决什么问题
+给你的 AI 编程助手拴上安全绳 — 任务通知、安全门禁、跨平台兼容，一套搞定。
 
-使用 Claude Code 执行长时间任务时，你会遇到这些痛点：
-1. **静默完成** — 任务结束了但你不知道，除非一直盯着终端
-2. **权限卡死** — Claude 请求权限，你离开了，它就一直等
-3. **危险命令** — 没有防护栏阻止 `rm -rf /` 或写入受保护文件
-4. **大文件浪费** — Claude 读取上万行自动生成文件，浪费上下文窗口
-5. **孤儿进程** — 异步任务挂死无人清理
-6. **进度黑盒** — 无法在执行中途查看任务状态
+## 你一定遇到过
 
-## 包含的 Hooks
+你启动 Claude Code，甩给它一个大活儿，去倒了杯咖啡。回来一看：
 
-| 脚本 | 触发事件 | 功能 |
+- ☕ 任务 20 分钟前就跑完了。没人告诉你。
+- 🔐 Claude 乖乖等你审批权限。等了 20 分钟。一声不吭。
+- 💀 更惨的 — 它跑了个 `rm -rf`，删了不该删的东西。
+- 📖 它把整个 `bundle.min.js`（15000 行）读进了上下文窗口。
+- 👻 昨天的异步任务还有三个孤儿进程在后台苟活。
+
+**这个仓库，专治以上疑难杂症。**
+
+## 全家桶一览
+
+| Hook | 触发时机 | 用人话说 |
+|------|---------|---------|
+| 🔔 **cc-stop-hook.sh** | 任务结束 | 飞书/Slack/Telegram 推一下 —— 别再傻等了 |
+| ⏰ **wait-notify.sh** | 等你审批 | "老板，Claude 等你 30 秒了，快回来……" |
+| 🛑 **cancel-wait.sh** | 你回来了 | 取消催命闹钟，它知道你在 |
+| 🛡️ **cc-safety-gate.sh** | 跑 Bash | 拦住 `rm -rf /`、`sudo`、`eval` 和 [22 种危险操作](#安全门拦截规则) |
+| 📏 **guard-large-files.sh** | 读文件 | "放下那个 `node_modules/`，慢慢退后。" |
+| 🚀 **dispatch-claude.sh** | 你手动调 | 隔离子任务：git worktree + 进度追踪 + 环境清洗 |
+| 📊 **check-claude-status.sh** | 你手动调 | "那玩意儿还活着吗？" 快速回答。 |
+| 🧹 **reap-orphans.sh** | 定时/手动 | 找到僵尸进程，人道主义清理 |
+| 📚 **generate-skill-index.sh** | 懒加载 | 构建 Skills 索引，让 Claude 知道自己有什么装备 |
+
+## 极速上手
+
+### 一行命令，零售后
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+```
+
+> 🇨🇳 **国内用户 / GitHub 慢？** 用镜像：
+> ```bash
+> curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
+> ```
+
+安装器替你搞定一切：
+
+```
+[1/6] 环境检查     ← bash、node、python3、curl，齐了没？
+[2/6] 安装脚本     ← 拉仓库 → 复制 → 加权限。完事。
+[3/6] 模块选择     ← 带复选框的 TUI！很酷对吧。
+[4/6] 注入配置     ← 深度合并到 settings.json，你原来的 hooks 不会被覆盖。
+[5/6] 通知设置     ← 飞书、Slack、Telegram、Bark、Discord……选你喜欢的。
+[6/6] 安装验证     ← 全绿通过，否则自动回滚。
+```
+
+```
+  ↑↓ 移动  ␣ 选择  a 全选/全不选  Enter 确认
+
+  ❯ [✔] 任务完成通知      因为沉默不是金
+    [✔] 安全门（Bash）     因为 rm -rf / 永远不是正确答案
+    [✔] 大文件拦截         因为 bundle.min.js 不是轻松读物
+    [✔] 等待超时提醒       因为 Claude 太有礼貌了不会冲你喊
+    [✔] 取消等待           因为你回来了，好人类
+```
+
+### 安装器花式用法
+
+```bash
+./install.sh                    # 交互式安装
+./install.sh --non-interactive  # CI 模式 — 全部模块，不问问题
+./install.sh --status           # "我装对了没？"
+./install.sh --update           # 只更新脚本，配置不动
+./install.sh --uninstall        # 体面退出
+./install.sh --uninstall --purge  # 核弹选项
+```
+
+### 手动安装（"我不信 curl | bash"）
+
+敬你是条好汉。
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+cd claude-code-hooks && ./install.sh
+```
+
+纯手工，不用安装器：
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+mkdir -p ~/.claude/scripts/claude-hooks
+cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
+chmod +x ~/.claude/scripts/claude-hooks/*.sh
+# 然后手动编辑 ~/.claude/settings.json — 参考下方「Hook 注册」
+```
+
+## 平台支持
+
+| 平台 | 状态 | 备注 |
+|------|------|------|
+| 🍎 **macOS** | ✅ 完美 | 需要 bash 4.0+（`brew install bash`，macOS 自带 3.2 太老了） |
+| 🐧 **Linux** | ✅ 完美 | `apt install bash curl python3 jq` 然后一键安装 |
+| 🪟 **WSL2** | ✅ 完美 | 本质上就是 Linux，只是多了几步安装 |
+| 🪟 **Git Bash** | ⚠️ 能用 | 通知和安全门没问题，后台定时器不太靠谱 |
+| 🪟 **PowerShell** | ❌ 不行 | 用 WSL2。认真的。 |
+
+### v3.0.0 新增：跨平台兼容层
+
+`platform-shim.sh` 提供了 8 个跨平台函数替换，所有 hook 自动加载 —— 你不需要配任何东西：
+
+```bash
+_date_iso          # date -Iseconds（MSYS2 上炸了）→ 自动降级 python3
+_kill_check $PID   # kill -0（Git Bash 没有）→ tasklist 兼容
+_ps_command_of $PID  # ps -p ... -o command=（同上）→ wmic 兼容
+_stat_mtime $FILE  # stat -f/-c（macOS vs Linux）→ 自动检测
+_env_clean cmd     # env -i（Windows 没有）→ 手动清理环境
+_sleep_frac 0.05   # sleep 0.05（MSYS2 不支持小数）→ 降级 sleep 1
+```
+
+## 装完之后：配置通知
+
+编辑 `notify.conf`（hook 子进程**不继承你的 shell 环境变量**，所以必须写在配置文件里）：
+
+```bash
+vim ~/.claude/scripts/claude-hooks/notify.conf
+```
+
+```bash
+CC_NOTIFY_BACKEND=auto          # 自动发现所有已配置后端，同时广播
+CC_WAIT_NOTIFY_SECONDS=30       # 等多久开始催你
+
+# 取消注释你要用的：
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/你的TOKEN
+# NOTIFY_WECOM_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的KEY
+# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx
+# CC_BARK_URL=https://api.day.app/你的KEY
+# CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+# CC_TELEGRAM_CHAT_ID=987654321
+```
+
+> 🔒 **凭证管理（v3.0.0 新增）：** 敏感 URL/Token 建议放 `~/.cchooks/secrets.env`（权限 600），别放 `notify.conf`。脚本会自动加载两个文件，还会做完整性检查 —— 有人塞了 `$(whoami)` 进去？直接拒绝加载。
+
+测试一下：
+```bash
+~/.claude/scripts/claude-hooks/send-notification.sh "你好，来自 Claude Code Hooks！🦞"
+```
+
+## 9 大通知后端
+
+**广播模式**（默认）：同时推到所有已配置的后端。一个挂了？其他不受影响。
+
+| 后端 | 配置变量 | 说明 |
 |------|---------|------|
-| `cc-stop-hook.sh` | Stop | 任务完成通知 + 审计日志 + .done 文件 |
-| `wait-notify.sh` | PermissionRequest / Notification | 等待超时提醒（默认 30 秒） |
-| `cancel-wait.sh` | PostToolUse / UserPromptSubmit | 取消等待超时计时器（含 5 秒防误杀） |
-| `cc-safety-gate.sh` | PreToolUse (Bash) | 危险命令拦截（黑名单 + 路径保护） |
-| `guard-large-files.sh` | PreToolUse (Read/Edit/Write) | 自动生成文件 + 噪音目录 + 超大文件拦截 |
-| `dispatch-claude.sh` | — | 任务派发封装（同步/异步 + 进度追踪 + Worktree 隔离） |
-| `check-claude-status.sh` | — | 任务状态查询 |
-| `reap-orphans.sh` | — | 孤儿进程清理 |
-| `generate-skill-index.sh` | — | Skills 索引生成器 |
-
-## 快速开始
-
-### 方式 A：一键安装（推荐）
+| 飞书 | `NOTIFY_FEISHU_URL` | 自定义机器人 webhook（支持签名验证） |
+| 企业微信 | `NOTIFY_WECOM_URL` | 群机器人 webhook |
+| Slack | `CC_SLACK_WEBHOOK_URL` | Incoming Webhook |
+| Telegram | `CC_TELEGRAM_BOT_TOKEN` + `CHAT_ID` | Bot API |
+| Discord | `CC_DISCORD_WEBHOOK_URL` | Webhook |
+| Bark | `CC_BARK_URL` | iOS 推送 — [Bark](https://github.com/Finb/Bark) |
+| Webhook | `CC_WEBHOOK_URL` | 任意 HTTP 端点 |
+| Command | `CC_NOTIFY_COMMAND` | 管道到任意命令行工具 |
+| OpenClaw | `CC_NOTIFY_TARGET` | 通过 OpenClaw 路由到飞书/Telegram 等 |
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
-```
-
-自动完成：① 克隆并复制脚本 ② 交互式配置通知渠道/目标 ③ 输出 settings.json 配置片段
-
-### 方式 B：手动安装
-
-```bash
-git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.claude/scripts/claude-hooks
-cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
-chmod +x ~/.claude/scripts/claude-hooks/*.sh
-```
-
-配置通知后端：
-```bash
-cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
-# auto = 发现所有已配置后端，同时广播
+# 举例：飞书 + Bark 同时推送
 CC_NOTIFY_BACKEND=auto
-CC_WAIT_NOTIFY_SECONDS=30
-
-# 飞书：
-NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-
-# Slack：
-# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
-EOF
-chmod 600 ~/.claude/scripts/claude-hooks/notify.conf
+NOTIFY_FEISHU_URL=https://open.feishu.cn/...
+CC_BARK_URL=https://api.day.app/...
+# → 每条通知，两边都收到。冗余即是爱。
 ```
 
-注册到 `~/.claude/settings.json`：完整配置见 [README.md](README.md#2-register-hooks-in-claudesettingsjson)。
+## 安全门拦截规则
 
-> **注意**：所有 matcher 使用 `"*"`（匹配所有）。避免使用空字符串 `""`，其行为未定义，可能导致 hook 不触发。
+`cc-safety-gate.sh` 见到这些直接拦：
 
-### 🪟 Windows 用户
+| 类别 | 举例 |
+|------|------|
+| **删库跑路** | `rm -rf /`、`rm -rf ~/`、`mkfs`、`dd if=` |
+| **提权** | `sudo`、`/usr/bin/sudo`、`\sudo`、`chmod 777` |
+| **代码注入** | `eval`、`source <(...)`、`. <(...)`、`base64 ... \| bash` |
+| **远程执行** | `curl \| sh`、`wget \| bash`、下载并执行链 |
+| **套壳绕过** | `bash -c "rm ..."`、`sh -c "sudo ..."`、`python3 -c "os.system(...)"` |
+| **路径保护** | `.ssh/`、`SOUL.md`、`IDENTITY.md`、`/etc/`、`/System/` |
 
-Windows 用户有两个选择：**WSL2**（完整功能）或 **Git Bash**（仅 hooks，有限制）。
+还支持外部自定义规则（`safety-rules.conf`）。
 
-#### 方案 A：WSL2（推荐 — 完整功能）
-
-```powershell
-# PowerShell（管理员）— 安装 WSL2
-wsl --install -d Ubuntu
-```
-
-```bash
-# 在 WSL2 Ubuntu 内：
-sudo apt-get install -y nodejs jq python3 curl openssl
-npm install -g @anthropic-ai/claude-code
-curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
-echo 'NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN' >> ~/.claude/scripts/claude-hooks/notify.conf
-~/.claude/scripts/claude-hooks/send-notification.sh "Hello from WSL2!"
-```
-
-#### 方案 B：Git Bash（仅 Hooks — 无需 jq）
-
-> **v1.3.1 起**，所有 hook 脚本内置了 `jq` 和 `python3` 的 Python 兼容层。如果你已经在 Git Bash 下运行 Claude Code，hooks 无需额外安装依赖即可工作。
-
-**前置条件：**
-- [Git for Windows](https://gitforwindows.org/)（含 Git Bash）
-- [Python 3.6+](https://www.python.org/downloads/)（安装时勾选"Add to PATH"）
-- Claude Code CLI 已在 Git Bash 下可用
-
-**安装：**
-```bash
-# 在 Git Bash 中：
-git clone https://github.com/Gopherlinzy/claude-code-hooks.git
-mkdir -p ~/.claude/scripts/claude-hooks
-cp claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
-chmod +x ~/.claude/scripts/claude-hooks/*.sh
-```
-
-**配置通知：**
-```bash
-cat > ~/.claude/scripts/claude-hooks/notify.conf << 'EOF'
-CC_NOTIFY_BACKEND=auto
-CC_WAIT_NOTIFY_SECONDS=30
-NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-EOF
-```
-
-**注册 hooks（`~/.claude/settings.json`）：**
-
-> ⚠️ **Windows 路径格式**：使用 `bash /c/Users/用户名/...` 正斜杠格式（Git Bash 风格），将 `用户名` 替换为你的 Windows 用户名。
-
-完整 settings.json 配置见 [README.md（英文版 Git Bash 段落）](README.md#option-b-git-bash-hooks-only--no-jq-required)。
-
-**测试：**
-```bash
-~/.claude/scripts/claude-hooks/send-notification.sh "Hello from Git Bash!"
-```
-
-**Git Bash 已知限制：**
-- `jq` 不包含在 Git Bash 中 — 所有脚本自动回退到 Python 解析 JSON
-- `python3` 命令可能不存在 — 脚本自动检测并使用 `python`
-- `/tmp/` 路径映射与原生 Windows 进程不同 — 多会话场景下后台定时器可能不稳定
-- 任务派发（`dispatch-claude.sh`）和孤儿清理（`reap-orphans.sh`）建议在 WSL2 下使用
-
-> **总结**：Git Bash 适合**通知**（任务完成、飞书/Slack/Telegram 提醒）和**安全门**（危险命令拦截）。完整任务生命周期管理请用 WSL2。
+> ⚠️ **诚实声明：** 黑名单天生存在绕过可能。一个有决心的攻击者（或者一个有创意的 LLM）总能找到办法。这是减速带，不是城墙。真正的安全边界请用 Claude Code 的 `--permission-mode`。
 
 ## 架构图
 
 ```
 Claude Code 会话
   │
-  ├── PreToolUse ─────┬── cc-safety-gate.sh（拦截危险 Bash 命令）
-  │                   └── guard-large-files.sh（拦截大文件/噪音）
+  ├── PreToolUse ─────┬── cc-safety-gate.sh ── "不行，这条命令我不让跑。"
+  │                   └── guard-large-files.sh ── "放下 bundle.min.js，慢慢退后。"
   │
-  ├── PermissionRequest ── wait-notify.sh → [30s 定时器] → 通知
+  ├── PermissionRequest ── wait-notify.sh ──→ ⏱️ 30秒 ──→ 📱 "快回来！"
   │
-  ├── Notification ─────── wait-notify.sh → [30s 定时器] → 通知
+  ├── Notification ─────── wait-notify.sh ──→ ⏱️ 30秒 ──→ 📱 "还在等你……"
   │
-  ├── PostToolUse ──────── cancel-wait.sh → [取消定时器]
+  ├── PostToolUse ──────── cancel-wait.sh ──→ ⏱️❌ "没事了，人回来了。"
   │
-  ├── UserPromptSubmit ─── cancel-wait.sh → [取消定时器]
+  ├── UserPromptSubmit ─── cancel-wait.sh ──→ ⏱️❌ "他打字了！"
   │
-  └── Stop ─────────────── cc-stop-hook.sh → .done 文件 + 通知
+  └── Stop ─────────────── cc-stop-hook.sh ──→ 📱 "完事了！结果在这。"
 ```
 
-## 通知后端
+## Hook 注册（settings.json）
 
-所有 Hook 使用**通用通知分发器**（`send-notification.sh`），内置支持 **9 种后端**，**同时广播到所有已配置渠道**：
+安装器会帮你搞定，手动安装的话照着抄：
 
-| 后端 | 配置变量 | 说明 |
-|------|---------|------|
-| Auto | `CC_NOTIFY_BACKEND=auto` | 发现所有已配置后端，同时广播 |
-| OpenClaw | `CC_NOTIFY_TARGET` | 飞书 / Telegram / 任意 OpenClaw 渠道 |
-| 飞书 | `NOTIFY_FEISHU_URL` | 飞书自定义机器人 webhook（支持签名） |
-| 企业微信 | `NOTIFY_WECOM_URL` | 企微群机器人 webhook |
-| Slack | `CC_SLACK_WEBHOOK_URL` | Slack Incoming Webhook |
-| Telegram | `CC_TELEGRAM_BOT_TOKEN` | Telegram Bot API |
-| Discord | `CC_DISCORD_WEBHOOK_URL` | Discord Webhook |
-| Bark | `CC_BARK_URL` | iOS 推送 ([Bark](https://github.com/Finb/Bark)) |
-| Webhook | `CC_WEBHOOK_URL` | 任意 HTTP 端点 |
-| Command | `CC_NOTIFY_COMMAND` | 任意命令行工具 |
-
-### 广播模式 (v1.3.0+)
-
-默认 `auto` 模式会**发现所有已配置后端**，然后**同时广播到每一个**。各后端独立执行 — 一个失败不影响其他。
-
-```bash
-# 示例：同时推送到飞书和 Bark
-CC_NOTIFY_BACKEND=auto
-NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-CC_BARK_URL=https://api.day.app/YOUR_KEY
-# → 飞书和 Bark 同时收到每条通知
+```json
+{
+  "hooks": {
+    "Stop": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cc-stop-hook.sh", "timeout": 15 }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Read|Edit|Write", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/guard-large-files.sh", "timeout": 5 }] },
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cc-safety-gate.sh", "timeout": 5 }] }
+    ],
+    "PermissionRequest": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/wait-notify.sh", "timeout": 5 }] }
+    ],
+    "Notification": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/wait-notify.sh", "timeout": 5 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cancel-wait.sh", "timeout": 3 }] }
+    ],
+    "UserPromptSubmit": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "~/.claude/scripts/claude-hooks/cancel-wait.sh", "timeout": 3 }] }
+    ]
+  }
+}
 ```
 
-也支持显式指定：
-```bash
-# 显式列表
-CC_NOTIFY_BACKEND=feishu,bark
+## 安全加固
 
-# 单后端（向后兼容）
-CC_NOTIFY_BACKEND=feishu
-```
+我们引以为傲的设计：
 
-## 配置项
+- 🛟 **全链路 Fail-Open** — hook 自身崩溃绝不阻塞 Claude Code。绝不。
+- 📝 **JSONL 审计日志** — 一切操作记录在 `~/.cchooks/logs/hooks-audit.jsonl`
+- 🔒 **凭证隔离** — 敏感信息存 `~/.cchooks/secrets.env`（600 权限），不放脚本目录
+- 🧬 **完整性校验** — `source` 前检查文件，含 `$(` 或反引号的一律拒绝
+- ⚛️ **原子写入** — tmp → 验证 → mv（崩溃安全）
+- 🔑 **API Key 隔离** — hook 启动时立即 unset `ANTHROPIC_API_KEY`
+- 🌍 **跨平台兼容** — `platform-shim.sh` 让 macOS/Linux/WSL2/Git Bash 统统能跑
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `CC_NOTIFY_BACKEND` | 后端选择（auto / 逗号列表 / 单个） | `auto` |
-| `CC_WAIT_NOTIFY_SECONDS` | 等待超时秒数 | `30` |
-| `CC_GATEWAY_PORT` | OpenClaw 网关端口（未设置则跳过） | _(未设置)_ |
-| `REAP_TIMEOUT` | 孤儿进程超时秒数 | `1800` |
+## Claude Code Hook 事件一览
+
+| 事件 | 触发时机 | matcher 匹配的是 |
+|------|---------|-----------------|
+| **PreToolUse** | 工具执行前 | 工具名（`Bash`、`Read` 等） |
+| **PostToolUse** | 工具执行后（成功） | 工具名 |
+| **Stop** | 会话结束 | 停止原因 |
+| **Notification** | CC 发通知 | `permission_prompt` / `idle_prompt` 等 |
+| **PermissionRequest** | CC 请求权限 | 工具名 |
+| **UserPromptSubmit** | 你输入了东西 | `*` |
+
+**matcher 语法：** `"*"`（全匹配）· `"Bash"`（精确）· `"Read|Edit|Write"`（OR）· `""`（别用 — 行为未定义）
 
 ## 依赖
 
-| 依赖 | 版本 | 用途 |
-|-----|------|------|
-| `bash` | 4.0+ | 所有 hook 脚本（macOS 需 `brew install bash`） |
-| `curl` | 任意 | 通知投递 |
-| `python3` | 3.6+ | JSON 编码 |
-| `jq` | 推荐 | JSON 解析（缺失时优雅降级） |
+| 依赖 | 必需？ | 干嘛的 |
+|------|--------|--------|
+| `bash` 4.0+ | ✅ | 一切都是 bash 写的。macOS 自带 3.2 太老了 → `brew install bash` |
+| `node` 14+ | ✅ | 安装器 TUI + hooks 合并 |
+| `curl` | ✅ | 发通知 |
+| `python3` | ✅ | JSON 转义（Windows 上自动检测 `python`） |
+| `jq` | 推荐 | JSON 解析（没有的话优雅降级到 Python） |
+| `git` | 可选 | Worktree 隔离 |
+| `openssl` | 可选 | 飞书签名验证 |
 
 ## 更新日志
 
-### v1.3.1 (2026-04-01)
+### v3.0.0 (2026-04-02)
 
-**🪟 Windows Git Bash 兼容性**
+**🛡️ 安全加固 + 跨平台兼容层 + 34 项修复**
 
-- **Python3 兼容层**：9 个 hook 脚本自动检测 `python`（当 `python3` 不存在时）
-- **jq 兼容层**：5 个依赖 jq 的脚本现在在 jq 不可用时自动回退到 Python 解析 JSON
-- **install.sh 修复**：matcher `""` → `"*"`（空字符串导致 hooks 静默不触发）
-- **安全门正则修复**：`curl.*|.*sh` 误杀合法命令 → 使用 POSIX `[[:space:]]` 兼容 macOS
-- **.gitattributes**：强制 `*.sh` 使用 LF 换行（防止 Windows 下 CRLF 报错）
-- **README**：新增 Windows Git Bash 安装指南
+> 请了个安全审计，然后他有很多意见。
 
-### v1.3.0 (2026-03-31)
+- **安全：** 凭证迁移到 secrets.env (600) · source 完整性检查 · eval → bash -c · 全部 shell→python 注入面消除 · JSON 生成改用 json.dump · 安全门 +8 条规则
+- **跨平台：** 新增 platform-shim.sh（8 个 portable 函数）· 30 处平台特定调用全部替换 · CCHOOKS_TMPDIR 全局可配置
+- **健壮性：** 移除致命 set -e · 修复锁释放 · 空数组保护 · session 搜索加速 · find -print0 防空格
 
-**📡 广播模式 — 多渠道同时通知**
-
-- **`send-notification.sh` v2**：重写后端选择逻辑
-  - `auto` 模式发现**所有**已配置后端并同时广播
-  - 各后端独立执行，一个失败不阻塞其他
-  - 支持逗号分隔显式列表：`CC_NOTIFY_BACKEND=feishu,slack,bark`
-  - 所有后端函数现在返回正确的退出码
-- **`cancel-wait.sh`**：新增 5 秒防误杀保护
-- **`wait-notify.sh`**：移除硬编码 `exit 0`，Notification hook 现在正常工作
-- **`settings.json` 修复**：
-  - Stop hook 正确注册 `cc-stop-hook.sh`
-  - Notification matcher `""` → `"*"`
-  - 移除所有无效 SUPERSET 命令（5 处）
-  - 移除 `/tmp` 调试脚本引用（安全风险）
-
-### v1.2.0 (2026-03-31)
-
-**🌍 飞书 & 企微 Webhook + 完全脱离 OpenClaw 依赖**
-
-### v1.1.0 (2026-03-30)
-
-**🛡️ Git Worktree 隔离（P0 安全加固）**
-
-### v1.0.0 (2026-03-29)
-
-初始发布。
+### v2.0.0 (2026-04-02) · 交互式安装器
+### v1.3.1 (2026-04-01) · Git Bash 兼容
+### v1.3.0 (2026-03-31) · 广播模式
+### v1.2.0 (2026-03-31) · 飞书 & 企微
+### v1.1.0 (2026-03-30) · Worktree 隔离
+### v1.0.0 (2026-03-29) · 首发
 
 ## 许可证
 
-MIT
+MIT — 你想干嘛干嘛。但别 `rm -rf /`。
