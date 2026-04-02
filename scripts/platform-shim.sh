@@ -151,6 +151,9 @@ _date_iso() {
 # === Portable /tmp path ===
 if [ "${CCHOOKS_PLATFORM}" = "gitbash" ] && [ -z "${CCHOOKS_TMPDIR:-}" ]; then
     # Git Bash: /tmp maps to MSYS temp, use USERPROFILE fallback
-    export CCHOOKS_TMPDIR="${USERPROFILE:-${TEMP:-/tmp}}/.cchooks-tmp"
+    CCHOOKS_TMPDIR="${USERPROFILE:-${TEMP:-/tmp}}/.cchooks-tmp"
+    # 归一化路径分隔符（Windows 环境变量用反斜杠）
+    CCHOOKS_TMPDIR="${CCHOOKS_TMPDIR//\\//}"
+    export CCHOOKS_TMPDIR
     mkdir -p "${CCHOOKS_TMPDIR}" 2>/dev/null || true
 fi

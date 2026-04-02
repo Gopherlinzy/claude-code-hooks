@@ -143,6 +143,8 @@ date +%s > "${LOCK_FILE}"
 # 使用 session_id 命名确保唯一
 DONE_FILE="${DONE_DIR}/${TASK_ID_SHORT}.done"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# 通知用本地时间（人类友好），JSON 保留 UTC（机器友好）
+TIMESTAMP_DISPLAY=$(date +"%Y-%m-%d %H:%M:%S %Z" 2>/dev/null || echo "${TIMESTAMP}")
 
 # DONE_FILE 用 python3 生成合法 JSON
 TASK_ID="${TASK_ID}" \
@@ -218,8 +220,8 @@ NOTIFY_MSG="🤖 Claude Code 任务完成！
 📋 任务: ${TASK_NAME}
 🆔 Session: ${TASK_ID_SHORT}
 🛑 停止原因: ${STOP_REASON}
-⏰ 时间: ${TIMESTAMP}
-📦 结果文件: ${DONE_FILE}"
+⏰ 时间: ${TIMESTAMP_DISPLAY}
+📦 结果文件: ${DONE_FILE//\\//}"
 
 send_notify "${NOTIFY_MSG}"
 
