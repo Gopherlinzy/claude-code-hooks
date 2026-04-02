@@ -43,8 +43,12 @@ if (outputFile) {
       const fd = fs.openSync('/dev/tty', 'r');
       ttyIn = new tty.ReadStream(fd);
     } catch {
-      // No TTY — write defaults to output file
-      fs.writeFileSync(outputFile, JSON.stringify(MODULES.map(m => m.key)));
+      // No TTY (Git Bash / CI / pipe) — show message and use defaults
+      const defaults = MODULES.map(m => m.key);
+      console.error('\x1b[33m⚠\x1b[0m  Terminal does not support interactive selection (no /dev/tty).');
+      console.error('    All modules enabled by default: ' + defaults.join(', '));
+      console.error('    Tip: Run inside Claude Code for a better install experience.');
+      fs.writeFileSync(outputFile, JSON.stringify(defaults));
       process.exit(0);
     }
   }

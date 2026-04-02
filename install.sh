@@ -583,7 +583,7 @@ run_install() {
     # 不用 $() 捕获（会吞掉 TUI），改用 tmpfile 通信
     local _select_tmp="${INSTALL_DIR}/.select-result.$$"
     local _select_rc=0
-    node "${INSTALL_DIR}/select-modules.js" --output "$_select_tmp" || _select_rc=$?
+    node "${INSTALL_DIR}/select-modules.js" --output "$_select_tmp" 2>/dev/null || _select_rc=$?
     
     local _selected=""
     if [ "$_select_rc" -eq 130 ]; then
