@@ -64,25 +64,35 @@ Use the merge tool (preserves existing hooks):
 ```bash
 SETTINGS="${HOME}/.claude/settings.json"
 
-# Generate hooks-patch.json
+# Detect platform → decide command prefix
+# Windows (Git Bash/MSYS/Cygwin): .sh files need "bash " prefix
+# macOS/Linux: direct execution works
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) CMD_PREFIX="bash " ;;
+    *)                     CMD_PREFIX="" ;;
+esac
+
+# Generate hooks-patch.json (platform-aware)
 node -e "
 const fs = require('fs');
 const dir = '${INSTALL_DIR}'.replace(/'/g, '');
+const prefix = '${CMD_PREFIX}';
+const cmd = (script) => prefix + dir + '/' + script;
 const hooks = {
   hooks: {
-    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: dir + '/cc-stop-hook.sh', timeout: 15 }] }],
+    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
     PreToolUse: [
-      { matcher: 'Bash', hooks: [{ type: 'command', command: dir + '/cc-safety-gate.sh', timeout: 5 }] },
-      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: dir + '/guard-large-files.sh', timeout: 5 }] }
+      { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] },
+      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] }
     ],
-    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: dir + '/wait-notify.sh', timeout: 5 }] }],
-    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: dir + '/wait-notify.sh', timeout: 5 }] }],
-    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: dir + '/cancel-wait.sh', timeout: 3 }] }],
-    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: dir + '/cancel-wait.sh', timeout: 3 }] }]
+    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }],
+    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
   }
 };
 fs.writeFileSync('/tmp/hooks-patch.json', JSON.stringify(hooks, null, 2));
-console.log('OK');
+console.log('OK — platform: ' + (prefix ? 'Windows (bash prefix)' : 'Unix (direct)'));
 "
 
 # Deep merge

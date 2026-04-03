@@ -170,31 +170,45 @@ trap 'echo ""; warn "Interrupted."; _HAD_ERROR=true; exit 130' INT TERM
 # ─── 生成 hooks-patch.json（基于当前模块开关状态）───
 generate_hooks_patch() {
   local output="$1"
+
+  # Platform detection: Windows (Git Bash/MSYS/Cygwin) needs "bash " prefix for .sh files
+  local cmd_prefix=""
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) cmd_prefix="bash " ;;
+  esac
+
   MOD_STOP="${MODULE_STOP}" \
   MOD_SAFETY="${MODULE_SAFETY}" \
   MOD_GUARD="${MODULE_GUARD}" \
   MOD_NOTIFY="${MODULE_NOTIFY}" \
   MOD_CANCEL="${MODULE_CANCEL}" \
   INSTALL_DIR_ENV="${INSTALL_DIR}" \
+  CMD_PREFIX="${cmd_prefix}" \
   PATCH_OUTPUT="${output}" \
   node -e "
     const fs = require('fs');
     const patch = { hooks: {} };
     const dir = process.env.INSTALL_DIR_ENV;
+    const prefix = process.env.CMD_PREFIX || '';
+    const cmd = (script) => prefix + dir + '/' + script;
     const add = (event, entry) => {
       if (!patch.hooks[event]) patch.hooks[event] = [];
       patch.hooks[event].push(entry);
     };
     if (process.env.MOD_STOP === 'true')
-      add('Stop', { matcher: '*', hooks: [{ type: 'command', command: dir + '/cc-stop-hook.sh', timeout: 15 }] });
+      add('Stop', { matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] });
     if (process.env.MOD_SAFETY === 'true')
-      add('PreToolUse', { matcher: 'Bash', hooks: [{ type: 'command', command: dir + '/cc-safety-gate.sh', timeout: 5 }] });
+      add('PreToolUse', { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] });
     if (process.env.MOD_GUARD === 'true')
-      add('PreToolUse', { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: dir + '/guard-large-files.sh', timeout: 5 }] });
-    if (process.env.MOD_NOTIFY === 'true')
-      add('Notification', { matcher: '*', hooks: [{ type: 'command', command: dir + '/wait-notify.sh', timeout: 5 }] });
-    if (process.env.MOD_CANCEL === 'true')
-      add('PostToolUse', { matcher: '*', hooks: [{ type: 'command', command: dir + '/cancel-wait.sh', timeout: 3 }] });
+      add('PreToolUse', { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] });
+    if (process.env.MOD_NOTIFY === 'true') {
+      add('Notification', { matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] });
+      add('PermissionRequest', { matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] });
+    }
+    if (process.env.MOD_CANCEL === 'true') {
+      add('PostToolUse', { matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] });
+      add('UserPromptSubmit', { matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] });
+    }
     fs.writeFileSync(process.env.PATCH_OUTPUT, JSON.stringify(patch, null, 2) + '\n', 'utf8');
   "
 }
