@@ -39,25 +39,57 @@ You fire up Claude Code, assign it a complex task, and go grab coffee. When you 
 | 📚 **generate-skill-index.sh** | Lazy | Builds a skill directory so Claude knows what tools it has. |
 | 💰 **[statusline/](tools/statusline/)** | claude-hud display | Real-time OpenRouter credit monitor with visual progress bar. |
 
-## 🎨 Statusline Tools
+## 🎨 Statusline Tools (Optional)
 
-### OpenRouter Credit Monitor
+### OpenRouter Credit Monitor for claude-hud
 
-Enhance your `claude-hud` statusline with real-time OpenRouter API balance monitoring.
+Enhance your Claude Code statusline with real-time OpenRouter API balance monitoring. This feature requires `claude-hud` (Claude's official statusline plugin).
 
 ```
-Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%
-Context ███░░░░░░░ 30% │ Usage █████░░░░░ 45%
+Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79% │ context: 42%
 ```
 
-**Features:**
-- Real-time credit balance and usage tracking
-- Visual 10-character progress bar (1 block = 10%)
-- 60-second smart caching to minimize API calls
-- Graceful error handling (offline, auth failed, etc.)
-- Quick setup: add `--extra-cmd` to your statusLine config
+**What you get:**
+- ✅ Real-time credit balance display
+- ✅ Visual 10-char progress bar
+- ✅ 60-second smart caching (minimal API calls)
+- ✅ Works offline gracefully
+- ✅ Cross-platform (macOS/Linux/Windows)
 
-**Get Started:** See [tools/statusline/README.md](tools/statusline/) for full setup instructions.
+### Quick Setup (3 steps)
+
+**Step 1: Install claude-hud plugin**
+
+Claude automatically downloads and updates `claude-hud`. You can verify it's installed by checking:
+```bash
+ls "${HOME}/.claude/plugins/cache/claude-hud/"
+# If empty, claude-hud will auto-install on next Claude Code restart
+```
+
+**Step 2: Run the setup tool**
+
+```bash
+~/.claude/scripts/claude-hooks/setup-statusline.sh
+```
+
+This tool will:
+- ✅ Verify claude-hud is installed
+- ✅ Generate the correct `statusLine` config for your OS
+- ✅ Guide you to add `OPENROUTER_API_KEY` to your shell
+- ✅ Show you where to paste the config
+
+**Step 3: Paste config into settings.json**
+
+The tool outputs a JSON snippet you can copy directly into `~/.claude/settings.json`.
+
+### Manual Setup (if you prefer)
+
+If you want to configure manually, see [tools/statusline/README.md](tools/statusline/) for detailed instructions.
+
+**Requirements:**
+- `OPENROUTER_API_KEY` environment variable set
+- `claude-hud` plugin (auto-installed by Claude Code)
+- Node.js 18+ (already required by Claude Code)
 
 ## Quick Start
 
