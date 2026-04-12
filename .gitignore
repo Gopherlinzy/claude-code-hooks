@@ -1,0 +1,18 @@
+notify.conf
+secrets.env
+scripts/safety-rules.conf
+*.log
+*.done
+*.meta
+*.lock
+
+# Spec and planning documents (internal only)
+CODE_REVIEW_FIXES.md
+docs/superpowers/plans/
+*.plan.md
+PLAN.md
+
+# Local cache and state
+.first-run-hint-shown
+.cache/
+.tmp/
