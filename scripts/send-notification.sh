@@ -13,30 +13,16 @@
 
 set -uo pipefail
 
-# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
-if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
-    python3() { PYTHONUTF8=1 python "$@"; }
-fi
+# === Load common functions ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # === Load config ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/notify.conf"
 
-# 公用完整性校验函数（P0-Bug-3 修复：只检查非注释行）
+# 兼容性包装：_safe_source 调用 _safe_source_conf
 _safe_source() {
-    local _file="$1"
-    [ -f "${_file}" ] || return 0
-
-    # 只检查非注释行中的危险字符，避免误伤注释中的示例代码
-    local _tainted_lines
-    _tainted_lines=$(grep -v '^\s*#' "${_file}" | grep -E '\$\(|`|\\|&&|;.*eval|source\s+<' 2>/dev/null || true)
-
-    if [ -n "$_tainted_lines" ]; then
-        echo "[send-notification] WARN: ${_file##*/} contains suspicious code ($(echo "$_tainted_lines" | wc -l) lines) — skipping" >&2
-        return 1
-    fi
-
-    source "${_file}"
+    _safe_source_conf "$@"
 }
 
 _safe_source "${CONF_FILE}"

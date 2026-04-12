@@ -7,21 +7,8 @@
 
 set -uo pipefail
 
-# === Platform shim (cross-platform compatibility) ===
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
-
-# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
-if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
-    python3() { PYTHONUTF8=1 python "$@"; }
-fi
-
-# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
-_log_jsonl() {
-    local _jsonl_dir="${HOME}/.cchooks/logs"
-    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
-    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
-    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
-}
+# === Load common functions ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # === 安全隔离 ===
 unset ANTHROPIC_API_KEY OPENAI_API_KEY ANTHROPIC_AUTH_TOKEN
@@ -29,21 +16,6 @@ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 # === 加载配置文件（CC Hook 子进程不继承 ~/.zshrc 环境变量）===
 _CONF_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/notify.conf"
-_safe_source_conf() {
-    local _file="$1"
-    [ -f "${_file}" ] || return 0
-
-    # P0-Bug-3 修复：只检查非注释行中的危险字符
-    local _tainted_lines
-    _tainted_lines=$(grep -v '^\s*#' "${_file}" | grep -E '\$\(|`|\\|&&|;.*eval|source\s+<' 2>/dev/null || true)
-
-    if [ -n "$_tainted_lines" ]; then
-        echo "[wait-notify] WARN: ${_file##*/} integrity check failed" >&2
-        return 1
-    fi
-
-    source "${_file}"
-}
 
 _safe_source_conf "${_CONF_FILE}"
 
