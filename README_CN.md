@@ -31,25 +31,57 @@
 | 📚 **generate-skill-index.sh** | 懒加载 | 构建 Skills 索引，让 Claude 知道自己有什么装备 |
 | 💰 **[statusline/](tools/statusline/)** | claude-hud 显示 | 实时 OpenRouter 信用额度监控，附带可视化进度条 |
 
-## 🎨 状态栏工具
+## 🎨 状态栏工具（可选）
 
-### OpenRouter 信用额度监控
+### OpenRouter 实时额度监控
 
-为 `claude-hud` 状态栏增强实时 OpenRouter API 余额监控功能。
+为你的 Claude Code 状态栏增强实时 OpenRouter API 额度监控。此功能需要 `claude-hud`（Claude 官方状态栏插件）。
 
 ```
-Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%
-Context ███░░░░░░░ 30% │ Usage █████░░░░░ 45%
+Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79% │ context: 42%
 ```
 
-**功能特性：**
-- 实时显示信用额度和使用统计
-- 可视化 10 字符进度条（1 格 = 10%）
-- 60 秒智能缓存，最小化 API 调用
-- 友好的错误处理（离线、认证失败等）
-- 快速配置：在 statusLine 中加 `--extra-cmd` 参数
+**你会得到：**
+- ✅ 实时显示信用额度余额
+- ✅ 可视化 10 字符进度条
+- ✅ 60 秒智能缓存（最小化 API 调用）
+- ✅ 离线友好（网络差不显示）
+- ✅ 跨平台支持（macOS/Linux/Windows）
 
-**开始使用：** 详见 [tools/statusline/README_CN.md](tools/statusline/README_CN.md)。
+### 快速设置（3 步）
+
+**第 1 步：claude-hud 插件会自动安装**
+
+Claude Code 会自动下载并更新 `claude-hud`。你可以验证：
+```bash
+ls "${HOME}/.claude/plugins/cache/claude-hud/"
+# 如果为空，重启 Claude Code 时会自动安装
+```
+
+**第 2 步：运行配置工具**
+
+```bash
+~/.claude/scripts/claude-hooks/setup-statusline.sh
+```
+
+这个工具会：
+- ✅ 检查 claude-hud 是否已安装
+- ✅ 根据你的系统生成正确的 `statusLine` 配置
+- ✅ 提示你添加 `OPENROUTER_API_KEY` 环境变量
+- ✅ 展示配置片段供你复制
+
+**第 3 步：粘贴配置到 settings.json**
+
+工具会输出一个 JSON 代码段，你可以直接复制到 `~/.claude/settings.json`。
+
+### 手动配置（如果你更喜欢）
+
+如果你想手动配置，详见 [tools/statusline/README_CN.md](tools/statusline/README_CN.md)。
+
+**前置条件：**
+- 设置环境变量 `OPENROUTER_API_KEY`
+- `claude-hud` 插件（Claude Code 自动安装）
+- Node.js 18+（Claude Code 已需要）
 
 ## 极速上手
 

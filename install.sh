@@ -945,6 +945,9 @@ CONF
     echo "    ./install.sh --update     Update scripts (keep config)"
     echo "    ./install.sh --uninstall  Remove hooks (keep config)"
     echo ""
+    echo -e "  ${BOLD}Optional: Statusline setup${NC} (OpenRouter credit monitor)"
+    echo "    ${INSTALL_DIR}/setup-statusline.sh"
+    echo ""
     echo "  Restart Claude Code to activate hooks."
   else
     err "Installation completed with ${ERRORS} error(s)."
