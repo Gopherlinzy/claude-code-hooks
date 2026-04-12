@@ -52,6 +52,7 @@ MODULE_SAFETY=true
 MODULE_GUARD=true
 MODULE_NOTIFY=true
 MODULE_CANCEL=true
+MODULE_STATUSLINE=false  # 默认关闭，用户可选
 
 # 检测脚本目录（curl|bash 模式时可能为空/无效）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
@@ -182,6 +183,7 @@ generate_hooks_patch() {
   MOD_GUARD="${MODULE_GUARD}" \
   MOD_NOTIFY="${MODULE_NOTIFY}" \
   MOD_CANCEL="${MODULE_CANCEL}" \
+  MOD_STATUSLINE="${MODULE_STATUSLINE}" \
   INSTALL_DIR_ENV="${INSTALL_DIR}" \
   CMD_PREFIX="${cmd_prefix}" \
   PATCH_OUTPUT="${output}" \
@@ -190,27 +192,117 @@ generate_hooks_patch() {
     const patch = { hooks: {} };
     const dir = process.env.INSTALL_DIR_ENV;
     const prefix = process.env.CMD_PREFIX || '';
-    const cmd = (script) => prefix + dir + '/' + script;
+    const cmd = (script) => prefix + dir + '/statusline/' + script;
+    const cmdHook = (script) => prefix + dir + '/' + script;  // hooks 不在 statusline 子目录
     const add = (event, entry) => {
       if (!patch.hooks[event]) patch.hooks[event] = [];
       patch.hooks[event].push(entry);
     };
     if (process.env.MOD_STOP === 'true')
-      add('Stop', { matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] });
+      add('Stop', { matcher: '*', hooks: [{ type: 'command', command: cmdHook('cc-stop-hook.sh'), timeout: 15 }] });
     if (process.env.MOD_SAFETY === 'true')
-      add('PreToolUse', { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] });
+      add('PreToolUse', { matcher: 'Bash', hooks: [{ type: 'command', command: cmdHook('cc-safety-gate.sh'), timeout: 5 }] });
     if (process.env.MOD_GUARD === 'true')
-      add('PreToolUse', { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] });
+      add('PreToolUse', { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmdHook('guard-large-files.sh'), timeout: 5 }] });
     if (process.env.MOD_NOTIFY === 'true') {
-      add('Notification', { matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] });
-      add('PermissionRequest', { matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] });
+      add('Notification', { matcher: '*', hooks: [{ type: 'command', command: cmdHook('wait-notify.sh'), timeout: 5 }] });
+      add('PermissionRequest', { matcher: '*', hooks: [{ type: 'command', command: cmdHook('wait-notify.sh'), timeout: 5 }] });
     }
     if (process.env.MOD_CANCEL === 'true') {
-      add('PostToolUse', { matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] });
-      add('UserPromptSubmit', { matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] });
+      add('PostToolUse', { matcher: '*', hooks: [{ type: 'command', command: cmdHook('cancel-wait.sh'), timeout: 3 }] });
+      add('UserPromptSubmit', { matcher: '*', hooks: [{ type: 'command', command: cmdHook('cancel-wait.sh'), timeout: 3 }] });
     }
     fs.writeFileSync(process.env.PATCH_OUTPUT, JSON.stringify(patch, null, 2) + '\n', 'utf8');
   "
+}
+
+# ─── 配置 statusLine（如果启用）───
+inject_statusline() {
+  if [ "${MODULE_STATUSLINE}" != "true" ]; then
+    return 0
+  fi
+
+  local tmp_output="${SETTINGS_FILE}.tmp.$$"
+  local node_exe="${NODE_EXE:-$(which node 2>/dev/null)}"
+
+  if [ -z "$node_exe" ]; then
+    warn "Node.js not found — skipping statusline configuration"
+    return 1
+  fi
+
+  # 构建脚本路径（支持 macOS 和 Windows）
+  local cmd_prefix=""
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) cmd_prefix="bash " ;;
+  esac
+  local statusline_script="${cmd_prefix}${INSTALL_DIR}/statusline/openrouter-status.sh"
+
+  # 生成 statusLine patch
+  STATUSLINE_CMD="${statusline_script}" \
+  NODE_EXE="${node_exe}" \
+  INSTALL_DIR_ENV="${INSTALL_DIR}" \
+  PATCH_OUTPUT="${SETTINGS_FILE}.statusline-patch.$$" \
+  "$node_exe" -e "
+    const fs = require('fs');
+    const path = require('path');
+
+    // 读取当前 settings.json
+    const settingsPath = '${SETTINGS_FILE}';
+    let current = {};
+    if (fs.existsSync(settingsPath)) {
+      try {
+        current = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      } catch (e) {
+        console.error('Error reading settings.json:', e.message);
+        process.exit(1);
+      }
+    }
+
+    // 构建现有 statusLine 的备份并更新
+    if (current.statusLine) {
+      // 备份现有 statusLine 配置
+      current._statusLine_backup = current.statusLine;
+    }
+
+    // 获取 node 路径和脚本路径
+    const nodeExe = '${NODE_EXE}';
+    const installDir = '${INSTALL_DIR_ENV}';
+    const statuslineScript = '${statusline_script}';
+
+    // 构建完整的 statusLine 命令（支持 macOS 和 Windows）
+    const pluginFinder = \`bash -c 'plugin_dir=\$(ls -d \"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print \$(NF-1) \"\\\\t\" \$(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"\${nodeExe}\" \"\${plugin_dir}dist/index.js\" --extra-cmd \"${statusline_script}\"'\`;
+
+    current.statusLine = {
+      command: pluginFinder,
+      type: 'command'
+    };
+
+    fs.writeFileSync(process.env.PATCH_OUTPUT, JSON.stringify(current, null, 2) + '\\n', 'utf8');
+  " 2>/dev/null || {
+    warn "Failed to configure statusline — skipping"
+    return 1
+  }
+
+  # 验证生成的文件
+  if [ ! -f "${SETTINGS_FILE}.statusline-patch.$$" ]; then
+    warn "Statusline patch generation failed"
+    return 1
+  fi
+
+  # 备份原文件
+  if [ -f "$SETTINGS_FILE" ]; then
+    cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak.statusline.$$"
+  fi
+
+  # 用新的替换
+  mv "${SETTINGS_FILE}.statusline-patch.$$" "$SETTINGS_FILE" || {
+    warn "Failed to apply statusline configuration"
+    [ -f "$SETTINGS_FILE.bak.statusline.$$" ] && mv "$SETTINGS_FILE.bak.statusline.$$" "$SETTINGS_FILE"
+    return 1
+  }
+
+  rm -f "$SETTINGS_FILE.bak.statusline.$$"
+  ok "Statusline configured with OpenRouter monitor"
 }
 
 # ─── 将 patch 深度合并进 settings.json（原子写入）───
@@ -626,16 +718,17 @@ run_install() {
   elif [ "$NON_INTERACTIVE" = false ]; then
     # Fallback：无 select-modules.js 时用简单数字输入
     echo ""
-    echo -e "  ${BOLD}Available hook modules (all enabled by default):${NC}"
+    echo -e "  ${BOLD}Available modules (all hooks enabled, statusline optional):${NC}"
     echo ""
     echo -e "    1) [${GREEN}ON${NC}] Stop notification       → cc-stop-hook.sh"
     echo -e "    2) [${GREEN}ON${NC}] Safety gate (Bash)      → cc-safety-gate.sh"
     echo -e "    3) [${GREEN}ON${NC}] Large file guard        → guard-large-files.sh"
     echo -e "    4) [${GREEN}ON${NC}] Wait notification       → wait-notify.sh"
     echo -e "    5) [${GREEN}ON${NC}] Cancel wait             → cancel-wait.sh"
+    echo -e "    6) [${RED}OFF${NC}] OpenRouter Credits       → statusline/openrouter-status.sh (optional)"
     echo ""
-    echo -e "  Enter numbers to ${RED}disable${NC} (comma-separated), or press Enter to keep all:"
-    echo -n "  Disable: "
+    echo -e "  Enter numbers to toggle (comma-separated), or press Enter to keep defaults:"
+    echo -n "  Toggle: "
     read -r _DISABLE_INPUT <&3 || true
 
     if [ -n "${_DISABLE_INPUT:-}" ]; then
@@ -648,6 +741,7 @@ run_install() {
           3) MODULE_GUARD=false;  info "Disabled: Large file guard" ;;
           4) MODULE_NOTIFY=false; info "Disabled: Wait notification" ;;
           5) MODULE_CANCEL=false; info "Disabled: Cancel wait" ;;
+          6) MODULE_STATUSLINE=true; info "Enabled: OpenRouter Credits statusline" ;;
         esac
       done
     fi
@@ -665,6 +759,7 @@ run_install() {
     acquire_lock
     backup_settings
     inject_hooks
+    inject_statusline  # Configure statusline if enabled
     cleanup_old_backups
     release_lock
   fi

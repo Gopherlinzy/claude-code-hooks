@@ -24,7 +24,12 @@ mkdir -p "${INSTALL_DIR}"
 cp /tmp/claude-code-hooks/scripts/*.sh "${INSTALL_DIR}/"
 chmod +x "${INSTALL_DIR}"/*.sh
 
-# Copy tools (for future updates)
+# Copy statusline tools
+mkdir -p "${INSTALL_DIR}/statusline"
+cp /tmp/claude-code-hooks/tools/statusline/*.sh "${INSTALL_DIR}/statusline/"
+chmod +x "${INSTALL_DIR}/statusline"/*.sh
+
+# Copy utility tools (for future updates)
 cp /tmp/claude-code-hooks/tools/merge-hooks.js "${INSTALL_DIR}/"
 cp /tmp/claude-code-hooks/tools/select-modules.js "${INSTALL_DIR}/"
 ```
@@ -100,6 +105,41 @@ node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" /tmp/hooks-patch.json "${SETT
 rm -f /tmp/hooks-patch.json
 ```
 
+### 4b. Configure StatusLine (Optional)
+
+If the user wants real-time OpenRouter credit monitoring in claude-hud:
+
+```bash
+# Add statusLine configuration to settings.json
+STATUSLINE_CMD="bash ${INSTALL_DIR}/statusline/openrouter-status.sh"
+
+# Detect platform for command prefix
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) STATUSLINE_CMD="bash ${STATUSLINE_CMD}" ;;
+esac
+
+# Find claude-hud plugin directory
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud"/*/ 2>/dev/null | \
+    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
+    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
+    tail -1 | cut -f2-)
+
+if [ -z "$PLUGIN_DIR" ]; then
+    warn "claude-hud plugin not found — statusline skipped"
+else
+    # Update settings.json with statusLine command
+    node -e "
+        const fs = require('fs');
+        const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
+        settings.statusLine = {
+            command: \\\`bash -c 'plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"${STATUSLINE_CMD}\\\"'\\\`,
+            type: 'command'
+        };
+        fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
+    "
+fi
+```
+
 ### 5. Verify
 
 ```bash
@@ -121,15 +161,16 @@ rm -rf /tmp/claude-code-hooks
 
 ## Module Selection
 
-All modules are enabled by default. If the user wants to disable specific modules, skip the corresponding hooks in step 4:
+Hook modules are enabled by default. StatusLine is optional (disabled by default). If the user wants to modify:
 
-| Module | Skip hooks for... |
-|--------|-------------------|
-| Stop notification | `Stop` event |
-| Safety gate | `PreToolUse` Bash matcher |
-| Large file guard | `PreToolUse` Read\|Edit\|Write matcher |
-| Wait notification | `PermissionRequest` + `Notification` events |
-| Cancel wait | `PostToolUse` + `UserPromptSubmit` events |
+| Module | Type | Default | To Disable... |
+|--------|------|---------|---|
+| Stop notification | Hook | ON | Skip `Stop` event in step 4 |
+| Safety gate | Hook | ON | Skip `PreToolUse` Bash matcher |
+| Large file guard | Hook | ON | Skip `PreToolUse` Read\|Edit\|Write matcher |
+| Wait notification | Hook | ON | Skip `PermissionRequest` + `Notification` events |
+| Cancel wait | Hook | ON | Skip `PostToolUse` + `UserPromptSubmit` events |
+| OpenRouter Credits | StatusLine | OFF | Don't run step 4b, or use installer to deselect |
 
 ## Updating
 

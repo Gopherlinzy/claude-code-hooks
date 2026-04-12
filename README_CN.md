@@ -255,6 +255,37 @@ Claude Code 会话
 }
 ```
 
+### 状态栏配置（可选）
+
+要在 claude-hud 状态栏添加实时 OpenRouter 信用额度监控：
+
+**macOS / Linux：**
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/usr/local/bin/node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "type": "command"
+  }
+}
+```
+
+**Windows (Git Bash / MSYS2)：**
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "type": "command"
+  }
+}
+```
+
+**前置条件：**
+- 设置环境变量 `OPENROUTER_API_KEY`
+- 已安装 `claude-hud` 插件
+- PATH 中可用 Node.js 18+
+
+详细配置见 [tools/statusline/README_CN.md](tools/statusline/)。
+
 ## 安全加固
 
 我们引以为傲的设计：

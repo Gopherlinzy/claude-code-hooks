@@ -15,6 +15,7 @@ const MODULES = [
   { key: 'guard',  label: 'Large file guard',      desc: 'Prevent reading auto-generated/noise files', script: 'guard-large-files.sh', on: true },
   { key: 'notify', label: 'Wait notification',     desc: 'Notify on permission prompts & waits',  script: 'wait-notify.sh', on: true },
   { key: 'cancel', label: 'Cancel wait',           desc: 'Dismiss notification on user activity',  script: 'cancel-wait.sh', on: true },
+  { key: 'statusline', label: 'OpenRouter Credits', desc: 'Real-time API balance in claude-hud',    script: 'statusline/openrouter-status.sh', on: false },
 ];
 
 // Parse --output argument
