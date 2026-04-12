@@ -42,21 +42,22 @@ json_field() {
     local timestamp="1234567890"
     local secret="test_secret"
 
-    # Current (buggy) implementation in send-notification.sh:
+    # Current implementation in send-notification.sh:
     # local sign_str="${timestamp}\n${NOTIFY_FEISHU_SECRET}"
     # sign=$(printf '%b' "${sign_str}" | openssl dgst -sha256 -hmac "${NOTIFY_FEISHU_SECRET}" -binary | base64)
 
-    # This is WRONG because printf '%b' interprets \n but the whole thing is ambiguous
-    local sign_wrong=$(printf '%b' "${timestamp}\\n${secret}" | openssl dgst -sha256 -hmac "${secret}" -binary | base64)
+    local sign_method1=$(printf '%b' "${timestamp}\\n${secret}" | openssl dgst -sha256 -hmac "${secret}" -binary | base64)
 
-    # Correct implementation:
+    # Alternative correct implementation (both produce same result):
     # local sign_str="${timestamp}"$'\n'"${secret}"
     # sign=$(echo -n "${sign_str}" | openssl dgst -sha256 -hmac "${secret}" -binary | base64)
 
-    local sign_correct=$(echo -n "${timestamp}"$'\n'"${secret}" | openssl dgst -sha256 -hmac "${secret}" -binary | base64)
+    local sign_method2=$(echo -n "${timestamp}"$'\n'"${secret}" | openssl dgst -sha256 -hmac "${secret}" -binary | base64)
 
-    # They should be different (proving the bug exists)
-    [[ "$sign_wrong" != "$sign_correct" ]]
+    # Both methods should produce identical signatures (both are correct)
+    [[ "$sign_method1" == "$sign_method2" ]]
+    # And the signature should not be empty
+    [[ -n "$sign_method1" ]]
 }
 
 # Test: Verify signature generation with proper echo -n method
