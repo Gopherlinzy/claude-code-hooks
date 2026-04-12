@@ -69,6 +69,12 @@ for arg in "$@"; do
   esac
 done
 
+# 验证 --purge 只与 --uninstall 配合使用
+if [ "$PURGE" = true ] && [ "$SUBCMD" != "uninstall" ]; then
+  err "--purge can only be used with --uninstall"
+  exit 1
+fi
+
 # ═══════════════════════════════════════════════════════════
 # 工具函数
 # ═══════════════════════════════════════════════════════════
@@ -477,20 +483,29 @@ cmd_update() {
   chmod +x "${INSTALL_DIR}"/*.sh
   ok "Updated ${updated} hook scripts"
 
-  # 更新 merge 工具
+  # 更新工具文件
   if [ -f "${_update_tmp}/repo/tools/merge-hooks.js" ]; then
     cp "${_update_tmp}/repo/tools/merge-hooks.js" "${INSTALL_DIR}/merge-hooks.js"
     ok "Updated merge-hooks.js"
   fi
 
+  if [ -f "${_update_tmp}/repo/tools/select-modules.js" ]; then
+    cp "${_update_tmp}/repo/tools/select-modules.js" "${INSTALL_DIR}/select-modules.js"
+    ok "Updated select-modules.js (TUI)"
+  fi
+
   rm -rf "${_update_tmp}"
 
-  # 重新注入 hooks
+  # 重新注入 hooks（使用默认 MODULE_* 值）
   if [ "$NON_INTERACTIVE" = false ]; then
-    echo -n "  Re-inject hooks into settings.json? [Y/n] "
+    echo -n "  Re-inject hooks into settings.json with default config? [Y/n] "
     read -r _REINJECT <&3 || true
-  fi
-  if [ "$NON_INTERACTIVE" = true ] || [[ ! "${_REINJECT:-}" =~ ^[Nn]$ ]]; then
+    if [[ ! "${_REINJECT:-}" =~ ^[Nn]$ ]]; then
+      inject_hooks
+    fi
+  else
+    # 非交互模式：自动重注入（使用默认 MODULE_* 值）
+    info "Re-injecting hooks with default config (non-interactive mode)..."
     inject_hooks
   fi
 

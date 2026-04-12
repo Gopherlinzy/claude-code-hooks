@@ -100,16 +100,24 @@ _sanitize_cmd_for_audit() {
     # 截断到最大长度
     _cmd="${_cmd:0:$_max_len}"
 
-    # 脱敏常见的敏感模式
-    _cmd=$(echo "$_cmd" | sed \
-        -e 's/Bearer[[:space:]]\+[A-Za-z0-9._-]\+/Bearer ***/g' \
-        -e 's/Authorization:[[:space:]]*Bearer[[:space:]]\+[^ ]*/Authorization: Bearer ***/g' \
-        -e 's/sk-[A-Za-z0-9_-]\+/sk-***/g' \
-        -e 's/api[_-]?key[=:][A-Za-z0-9._-]\+/api_key=***/g' \
-        -e 's/password[=:][^ ]\+/password=***/g' \
-        -e 's/token[=:][A-Za-z0-9._-]\+/token=***/g' \
-        -e 's/-H[[:space:]]*"[^"]*key[^"]*"/-H "***"/g' \
-        2>/dev/null || echo "$_cmd")
+    # 使用 grep + sed 进行脱敏，确保最大兼容性
+    # 检查是否包含敏感词，如果有则进行脱敏
+    if echo "$_cmd" | grep -qiE '(bearer|authorization|password|token|api|key|sk-|akiai)'; then
+        # Bearer token（处理多种格式）
+        _cmd=$(echo "$_cmd" | sed 's/Bearer[[:space:]]*[^ ]*/Bearer ***/gi')
+        # Authorization header
+        _cmd=$(echo "$_cmd" | sed 's/Authorization:[[:space:]]*[^ ]*/Authorization: ***/gi')
+        # API Key variants (sk-xxx)
+        _cmd=$(echo "$_cmd" | sed 's/sk-[A-Za-z0-9._-]*/* ***/g')
+        # Password field (password=xxx or password:xxx)
+        _cmd=$(echo "$_cmd" | sed 's/password[=:][^ ]*/password=***/gi')
+        # Generic token fields (token=xxx or token:xxx)
+        _cmd=$(echo "$_cmd" | sed 's/token[=:][^ ]*/token=***/gi')
+        # AWS Access Key (AKIAIOSFODNN7EXAMPLE)
+        _cmd=$(echo "$_cmd" | sed 's/AKIA[0-9A-Z]\{16\}/AKIA***/g')
+        # X-API-Key header
+        _cmd=$(echo "$_cmd" | sed 's/X-API-Key:[[:space:]]*[^ ]*/X-API-Key: ***/gi')
+    fi
 
     echo "$_cmd"
 }
