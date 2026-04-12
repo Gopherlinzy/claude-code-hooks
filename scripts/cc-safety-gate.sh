@@ -42,24 +42,49 @@ fi
 
 # === 黑名单模式 ===
 BLACKLIST_PATTERNS=(
+    # 文件删除
     'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)*/($|\s|\*)'
     'rm\s+--recursive\s+--force\s+/'
     'rm\s+-rf\s+~'
+
+    # 权限提升
     'sudo '
     '\\\\sudo\s'
     '(/usr/(local/)?s?bin/)?sudo\s'
+    'chmod\s+.*\+s'
     'chmod 777'
+
+    # 管道执行
     'curl[[:space:]].*\|[[:space:]]*(ba)?sh'
     'wget[[:space:]].*\|[[:space:]]*(ba)?sh'
     'curl[[:space:]].*>[[:space:]]*/tmp/.*&&.*sh'
+    'base64\s+.*\|\s*(ba)?sh'
+    '>\s*/tmp/[^\s]+\s*&&\s*(ba)?sh\s'
+
+    # Shell 执行/代码注入
     'eval\s+'
     'source\s+<\('
     '\.\s+<\('
-    'base64\s+.*\|\s*(ba)?sh'
-    '>\s*/tmp/[^\s]+\s*&&\s*(ba)?sh\s'
     '(ba)?sh\s+-c\s+.*rm\s'
     '(ba)?sh\s+-c\s+.*sudo'
+
+    # 编程语言代码执行
+    'node\s+(-e|--eval|--input-type)'
+    'perl\s+(-e|-E)'
+    'python[23]?\s+(-c|--command)'
+
+    # 原始 Python 代码执行（不仅仅是 os.system）
     'python[23]?\s+-c\s+.*os\.(system|popen|exec)'
+    'python[23]?\s+-c\s+.*subprocess'
+    'python[23]?\s+-c\s+.*exec'
+
+    # 反弹 shell
+    '(nc|ncat|netcat)\s+.*-e'
+
+    # 找到并执行
+    'find\s+.*-exec\s+(bash|sh|python)'
+
+    # 其他
     'mkfs'
     'dd if='
     '> /etc/'
