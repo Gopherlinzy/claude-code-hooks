@@ -496,11 +496,11 @@ ${FORMATTED_INPUT}
     # 发送通知（通过通用通知层）
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # P0-Bug-4 修复：在 source 前检查完整性
+    # P0-5 修复：功能脚本直接 source（不经过 _safe_source_conf）
+    # _safe_source_conf 仅用于配置文件 (key=value)，不适用于含函数定义的脚本
     _NOTIFY_SCRIPT="${SCRIPT_DIR}/send-notification.sh"
-    if ! _safe_source_conf "${_NOTIFY_SCRIPT}" 2>/dev/null; then
-        _cchooks_error "send-notification.sh integrity check failed"
-    else
+    if [ -f "${_NOTIFY_SCRIPT}" ]; then
+        source "${_NOTIFY_SCRIPT}" 2>/dev/null || true
         send_notify "${NOTIFY_MSG}"
     fi
 

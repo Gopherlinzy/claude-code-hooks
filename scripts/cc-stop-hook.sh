@@ -189,13 +189,13 @@ rm -f "${_WAIT_MARKER_DIR}/${TASK_ID_SHORT}.counter" "${_WAIT_MARKER_DIR}/${TASK
 # === 信号通道 2：推送通知（通过通用通知层）===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# P0-Bug-4 修复：在 source 前检查完整性
+# P0-5 修复：功能脚本直接 source（不经过 _safe_source_conf）
+# _safe_source_conf 仅用于配置文件 (key=value)，不适用于含函数定义的脚本
 _NOTIFY_SCRIPT="${SCRIPT_DIR}/send-notification.sh"
-if ! _safe_source_conf "${_NOTIFY_SCRIPT}" 2>/dev/null; then
-    _cchooks_error "send-notification.sh integrity check failed"
-    exit 0  # Fail-open: don't break the hook
+if [ -f "${_NOTIFY_SCRIPT}" ]; then
+    source "${_NOTIFY_SCRIPT}" 2>/dev/null || true
 fi
-# 注：_safe_source_conf 已经调用了 source，所以这里不需要再 source
+
 NOTIFY_MSG="🤖 Claude Code 任务完成！
 📋 任务: ${TASK_NAME}
 🆔 Session: ${TASK_ID_SHORT}
