@@ -147,9 +147,10 @@ _notify_feishu() {
     if [ -n "${NOTIFY_FEISHU_SECRET:-}" ]; then
         local timestamp
         timestamp=$(date +%s)
-        local sign_str="${timestamp}\n${NOTIFY_FEISHU_SECRET}"
+        local sign_str
+        sign_str=$(printf '%s\n%s' "${timestamp}" "${NOTIFY_FEISHU_SECRET}")
         local sign
-        sign=$(printf '%b' "${sign_str}" | openssl dgst -sha256 -hmac "${NOTIFY_FEISHU_SECRET}" -binary | base64)
+        sign=$(printf '%s' "${sign_str}" | openssl dgst -sha256 -hmac "${NOTIFY_FEISHU_SECRET}" -binary | base64)
         payload="{\"timestamp\":\"${timestamp}\",\"sign\":\"${sign}\",\"msg_type\":\"text\",\"content\":{\"text\":\"${escaped_msg}\"}}"
     else
         payload="{\"msg_type\":\"text\",\"content\":{\"text\":\"${escaped_msg}\"}}"

@@ -7,21 +7,8 @@
 
 set -uo pipefail
 
-# === Platform shim (cross-platform compatibility) ===
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/platform-shim.sh"
-
-# === Python 兼容（Windows Git Bash：python3 不在 PATH） ===
-if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
-    python3() { PYTHONUTF8=1 python "$@"; }
-fi
-
-# === JSONL 审计日志函数（自身 fail-safe，绝不抛错）===
-_log_jsonl() {
-    local _jsonl_dir="${HOME}/.cchooks/logs"
-    local _jsonl_file="${_jsonl_dir}/hooks-audit.jsonl"
-    mkdir -p "${_jsonl_dir}" 2>/dev/null || true
-    printf '%s\n' "$1" >> "${_jsonl_file}" 2>/dev/null || true
-}
+# === Load common functions ===
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 # === 从 stdin 读取 Hook JSON ===
 STDIN_JSON="$(cat 2>/dev/null || true)"

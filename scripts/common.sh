@@ -40,8 +40,10 @@ _safe_source_conf() {
     [ -f "${_file}" ] || return 0
 
     # 只检查非注释行中的危险字符，避免误伤注释中的示例代码
+    # 只检查真正危险的模式：$( 代码替换、` 反引号执行、eval 执行
+    # 移除过于宽泛的 \\ 和 && 检查（Windows 路径和管道都合法）
     local _tainted_lines
-    _tainted_lines=$(grep -v '^\s*#' "${_file}" | grep -E '\$\(|`|\\|&&|;.*eval|source\s+<' 2>/dev/null || true)
+    _tainted_lines=$(grep -v '^\s*#' "${_file}" | grep -E '\$\(|`|;[[:space:]]*eval' 2>/dev/null || true)
 
     if [ -n "$_tainted_lines" ]; then
         echo "[cchooks] WARN: ${_file##*/} contains suspicious code ($(echo "$_tainted_lines" | wc -l) lines) — skipping" >&2
