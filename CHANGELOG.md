@@ -4,6 +4,42 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)，本项目遵循 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
+## [1.0.1] - 2026-04-12
+
+### Security & Privacy Fixes
+
+#### 隐私问题-1：审计日志命令脱敏处理
+- **问题**: hooks-audit.jsonl 明文记录完整命令，可能包含 API key、密码等敏感信息
+- **修复**: 新增 `_sanitize_cmd_for_audit()` 函数
+  - 截断命令到 200 字符
+  - 自动脱敏 Bearer 令牌、API 密钥、密码、token 等敏感模式
+  - cc-safety-gate.sh 所有日志调用自动使用脱敏命令
+- **影响**: 防止敏感信息泄露到审计日志
+
+#### 隐私问题-4：.gitignore 补充 *.jsonl
+- **问题**: 审计日志文件 (*.jsonl) 未被 .gitignore 保护
+- **修复**: 添加 `*.jsonl` 到 .gitignore
+- **影响**: 防止日志文件被意外提交到 git
+
+#### 文档改进
+- README: v3.0.0 统一改为 v1.0.1
+- 标注 dispatch-claude.sh `--permission-mode bypassPermissions` 与安全权限的关系
+- 建议敏感信息存储于 ~/.cchooks/secrets.env (chmod 600)
+
+### Known Issues（需要后续关注）
+
+#### 隐私问题-5：dispatch-claude.sh 环境变量泄露（中等优先级）
+- dispatch-claude.sh 将 ANTHROPIC_API_KEY 保留在子进程环境中
+- 建议：在异步子进程启动前显式 unset ANTHROPIC_API_KEY
+
+#### 安全漏洞-1：dispatch-claude.sh bypassPermissions（需要文档标注）
+- 子任务运行在 `--permission-mode bypassPermissions` 下，绕过用户权限确认
+- 建议：在文档中明确标注此风险；提供 --safe 模式选项
+
+#### 安全漏洞-2：dispatch-claude.sh 异步 nohup 注入面（需要改进）
+- 异步模式中 ${_ASYNC_SKILL_ARG}、${_ASYNC_STREAM_ARG} 未加引号
+- 建议：使用临时脚本文件传递参数，避免字符串内嵌
+
 ## [1.0.0] - 2026-04-12
 
 ### Fixed - P0 Bug Fixes (Quality Score: 7.5 → 8.5)

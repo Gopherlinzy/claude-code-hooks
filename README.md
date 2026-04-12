@@ -1,7 +1,7 @@
 ---
 name: claude-code-hooks
 description: Keep Claude Code on a leash — task notifications, security gates, and cross-platform hooks.
-version: 3.0.0
+version: 1.0.1
 ---
 
 # 🦞 Claude Code Hooks
@@ -132,7 +132,7 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 | 🪟 **Git Bash** | ⚠️ Hooks work | Background timers unreliable. Notifications + safety gate work fine. |
 | 🪟 **PowerShell** | ❌ | Use WSL2. Seriously. |
 
-### v3.0.0: Cross-Platform Shim
+### v1.0.1: Cross-Platform Shim & Security Hardening
 
 New in v3: `platform-shim.sh` provides portable replacements for platform-specific commands. All hook scripts automatically use the shim — no manual configuration needed.
 
@@ -167,7 +167,7 @@ CC_WAIT_NOTIFY_SECONDS=30       # How long before "hey, Claude's waiting"
 # CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-> 🔒 **Secrets management (v3.0.0):** For sensitive URLs/tokens, put them in `~/.cchooks/secrets.env` (chmod 600) instead of `notify.conf`. The scripts auto-load both, with integrity checks.
+> 🔒 **Secrets management (v1.0.1):** For sensitive URLs/tokens, put them in `~/.cchooks/secrets.env` (chmod 600) instead of `notify.conf`. The scripts auto-load both, with integrity checks.
 
 Test it:
 ```bash

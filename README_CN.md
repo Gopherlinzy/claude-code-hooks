@@ -124,7 +124,7 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 | 🪟 **Git Bash** | ⚠️ 能用 | 通知和安全门没问题，后台定时器不太靠谱 |
 | 🪟 **PowerShell** | ❌ 不行 | 用 WSL2。认真的。 |
 
-### v3.0.0 新增：跨平台兼容层
+### v1.0.1 新增：跨平台兼容层
 
 `platform-shim.sh` 提供了 8 个跨平台函数替换，所有 hook 自动加载 —— 你不需要配任何东西：
 
