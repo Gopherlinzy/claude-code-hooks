@@ -32,14 +32,16 @@ _CONF_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/notify.conf"
 _safe_source_conf() {
     local _file="$1"
     [ -f "${_file}" ] || return 0
-    if grep -qF '$(' "${_file}" 2>/dev/null; then
+
+    # P0-Bug-3 修复：只检查非注释行中的危险字符
+    local _tainted_lines
+    _tainted_lines=$(grep -v '^\s*#' "${_file}" | grep -E '\$\(|`|\\|&&|;.*eval|source\s+<' 2>/dev/null || true)
+
+    if [ -n "$_tainted_lines" ]; then
         echo "[wait-notify] WARN: ${_file##*/} integrity check failed" >&2
         return 1
     fi
-    if grep -qF '`' "${_file}" 2>/dev/null; then
-        echo "[wait-notify] WARN: ${_file##*/} integrity check failed" >&2
-        return 1
-    fi
+
     source "${_file}"
 }
 
