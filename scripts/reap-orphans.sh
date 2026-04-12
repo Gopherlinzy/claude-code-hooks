@@ -46,7 +46,11 @@ for meta in "${META_DIR}"/*.meta; do
 done
 
 # === 清理过期的 .done 文件（7天以上）===
-_DONE_CLEANED=$(find "${META_DIR}" -name "*.done" -mtime +7 -delete -print 2>/dev/null | wc -l | tr -d ' ')
+# 修复：macOS BSD find 不支持 -delete + -print，改用 while loop
+_DONE_CLEANED=0
+while IFS= read -r -d '' _f; do
+    rm -f "${_f}" && _DONE_CLEANED=$(( _DONE_CLEANED + 1 ))
+done < <(find "${META_DIR}" -name "*.done" -mtime +7 -print0 2>/dev/null)
 [ "${_DONE_CLEANED:-0}" -gt 0 ] && echo "[reaper] Cleaned ${_DONE_CLEANED} expired .done file(s)"
 
 # === 清理过期的 .meta 文件（无进程存活且超过7天）===

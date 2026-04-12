@@ -119,12 +119,12 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # 通知用本地时间（人类友好），JSON 保留 UTC（机器友好）
 TIMESTAMP_DISPLAY=$(date +"%Y-%m-%d %H:%M:%S %Z" 2>/dev/null || echo "${TIMESTAMP}")
 
-# DONE_FILE 用 python3 生成合法 JSON
-TASK_ID="${TASK_ID}" \
-TASK_NAME="${TASK_NAME}" \
-STOP_REASON="${STOP_REASON}" \
-TIMESTAMP="${TIMESTAMP}" \
-python3 -c "
+# DONE_FILE 用 python3 生成合法 JSON，同时绑定审计日志
+if TASK_ID="${TASK_ID}" \
+   TASK_NAME="${TASK_NAME}" \
+   STOP_REASON="${STOP_REASON}" \
+   TIMESTAMP="${TIMESTAMP}" \
+   python3 -c "
 import json, os, sys
 d = {
     'session_id': os.environ['TASK_ID'],
@@ -136,7 +136,16 @@ d = {
 }
 json.dump(d, sys.stdout, indent=2, ensure_ascii=False)
 print()
-" > "${DONE_FILE}" 2>/dev/null || cat > "${DONE_FILE}" <<EOF
+" > "${DONE_FILE}" 2>/dev/null; then
+    # === 审计日志 (JSONL) — python3 成功执行 ===
+    if command -v jq &>/dev/null; then
+        _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg sid "${TASK_ID_SHORT}" --arg name "${TASK_NAME}" --arg reason "${STOP_REASON}" --arg event "stop" --arg hook "cc-stop-hook" '{ts:$ts,hook:$hook,session_id:$sid,name:$name,stop_reason:$reason,event:$event}')"
+    else
+        _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-stop-hook\",\"session_id\":\"${TASK_ID_SHORT}\",\"name\":\"${TASK_NAME}\",\"stop_reason\":\"${STOP_REASON}\",\"event\":\"stop\"}"
+    fi
+else
+    # === Fallback：python3 失败，用 heredoc 写入 ===
+    cat > "${DONE_FILE}" <<EOF
 {
   "session_id": "${TASK_ID}",
   "task_name": "unknown",
@@ -146,12 +155,7 @@ print()
   "status": "done"
 }
 EOF
-
-# === 审计日志 (JSONL) ===
-if command -v jq &>/dev/null; then
-    _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg sid "${TASK_ID_SHORT}" --arg name "${TASK_NAME}" --arg reason "${STOP_REASON}" --arg event "stop" --arg hook "cc-stop-hook" '{ts:$ts,hook:$hook,session_id:$sid,name:$name,stop_reason:$reason,event:$event}')"
-else
-    _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"notify-openclaw\",\"session_id\":\"${TASK_ID_SHORT}\",\"name\":\"${TASK_NAME}\",\"stop_reason\":\"${STOP_REASON}\",\"event\":\"stop\"}"
+    _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-stop-hook\",\"session_id\":\"${TASK_ID_SHORT}\",\"event\":\"stop\",\"note\":\"python3_fallback\"}"
 fi
 
 # === 锁文件保留至自然过期（TTL=300s），不主动删除，防止 /resume 重复触发 ===
