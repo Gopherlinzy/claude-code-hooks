@@ -101,13 +101,16 @@ if [ -f "${_RULES_FILE}" ]; then
     fi
 fi
 
+# 脱敏命令（移除敏感信息）
+CMD_SANITIZED="$(_sanitize_cmd_for_audit "${CMD}")"
+
 # 检查黑名单
 for pattern in "${BLACKLIST_PATTERNS[@]}"; do
     if echo "${CMD}" | grep -qE "${pattern}"; then
         if command -v jq &>/dev/null; then
-            _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "cc-safety-gate" --arg action "deny" --arg rule "${pattern}" --arg cmd "${CMD}" '{ts:$ts,hook:$hook,action:$action,rule:$rule,cmd:$cmd}')"
+            _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "cc-safety-gate" --arg action "deny" --arg rule "${pattern}" --arg cmd "${CMD_SANITIZED}" '{ts:$ts,hook:$hook,action:$action,rule:$rule,cmd:$cmd}')"
         else
-            _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-safety-gate\",\"action\":\"deny\",\"rule\":\"${pattern}\"}"
+            _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-safety-gate\",\"action\":\"deny\",\"rule\":\"${pattern}\",\"cmd_truncated\":\"${CMD_SANITIZED:0:100}\"}"
         fi
         cat <<EOF
 {"decision":"deny","reason":"[cc-safety-gate] 命令匹配黑名单规则: ${pattern}"}
@@ -120,9 +123,9 @@ done
 for protected in "${PROTECTED_PATHS[@]}"; do
     if echo "${CMD}" | grep -qF "${protected}"; then
         if command -v jq &>/dev/null; then
-            _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "cc-safety-gate" --arg action "deny" --arg path "${protected}" --arg cmd "${CMD}" '{ts:$ts,hook:$hook,action:$action,protected_path:$path,cmd:$cmd}')"
+            _log_jsonl "$(jq -nc --arg ts "$(_date_iso)" --arg hook "cc-safety-gate" --arg action "deny" --arg path "${protected}" --arg cmd "${CMD_SANITIZED}" '{ts:$ts,hook:$hook,action:$action,protected_path:$path,cmd:$cmd}')"
         else
-            _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-safety-gate\",\"action\":\"deny\",\"protected_path\":\"${protected}\"}"
+            _log_jsonl "{\"ts\":\"$(_date_iso)\",\"hook\":\"cc-safety-gate\",\"action\":\"deny\",\"protected_path\":\"${protected}\",\"cmd_truncated\":\"${CMD_SANITIZED:0:100}\"}"
         fi
         cat <<EOF
 {"decision":"deny","reason":"[cc-safety-gate] 命令涉及受保护路径: ${protected}"}

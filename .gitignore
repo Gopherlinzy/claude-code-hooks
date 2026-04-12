@@ -2,6 +2,7 @@ notify.conf
 secrets.env
 scripts/safety-rules.conf
 *.log
+*.jsonl
 *.done
 *.meta
 *.lock
@@ -16,3 +17,7 @@ PLAN.md
 .first-run-hint-shown
 .cache/
 .tmp/
+
+# Personal Git multi-account configuration (do not commit)
+.git-multi-account
+.git-setup-guide.md

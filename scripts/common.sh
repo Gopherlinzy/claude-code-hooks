@@ -90,11 +90,36 @@ except:
     fi
 }
 
+# === 命令脱敏函数（审计日志保护） ===
+# 对命令中的敏感信息进行脱敏处理，防止 API 密钥、密码等泄露到审计日志
+# 截断到 200 字符并替换常见的密钥模式
+_sanitize_cmd_for_audit() {
+    local _cmd="$1"
+    local _max_len="${2:-200}"
+
+    # 截断到最大长度
+    _cmd="${_cmd:0:$_max_len}"
+
+    # 脱敏常见的敏感模式
+    _cmd=$(echo "$_cmd" | sed \
+        -e 's/Bearer[[:space:]]\+[A-Za-z0-9._-]\+/Bearer ***/g' \
+        -e 's/Authorization:[[:space:]]*Bearer[[:space:]]\+[^ ]*/Authorization: Bearer ***/g' \
+        -e 's/sk-[A-Za-z0-9_-]\+/sk-***/g' \
+        -e 's/api[_-]?key[=:][A-Za-z0-9._-]\+/api_key=***/g' \
+        -e 's/password[=:][^ ]\+/password=***/g' \
+        -e 's/token[=:][A-Za-z0-9._-]\+/token=***/g' \
+        -e 's/-H[[:space:]]*"[^"]*key[^"]*"/-H "***"/g' \
+        2>/dev/null || echo "$_cmd")
+
+    echo "$_cmd"
+}
+
 # === 导出所有函数供子 shell 使用 ===
 export -f _log_jsonl
 export -f _cchooks_error
 export -f _safe_source_conf
 export -f _json_get_value
+export -f _sanitize_cmd_for_audit
 export -f _ps_command_of
 export -f _kill_check
 export -f _env_clean

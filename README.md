@@ -1,7 +1,7 @@
 ---
 name: claude-code-hooks
 description: Keep Claude Code on a leash — task notifications, security gates, and cross-platform hooks.
-version: 3.0.0
+version: 1.0.1
 ---
 
 # 🦞 Claude Code Hooks
@@ -132,7 +132,7 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 | 🪟 **Git Bash** | ⚠️ Hooks work | Background timers unreliable. Notifications + safety gate work fine. |
 | 🪟 **PowerShell** | ❌ | Use WSL2. Seriously. |
 
-### v3.0.0: Cross-Platform Shim
+### v1.0.1: Cross-Platform Shim & Security Hardening
 
 New in v3: `platform-shim.sh` provides portable replacements for platform-specific commands. All hook scripts automatically use the shim — no manual configuration needed.
 
@@ -167,7 +167,7 @@ CC_WAIT_NOTIFY_SECONDS=30       # How long before "hey, Claude's waiting"
 # CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-> 🔒 **Secrets management (v3.0.0):** For sensitive URLs/tokens, put them in `~/.cchooks/secrets.env` (chmod 600) instead of `notify.conf`. The scripts auto-load both, with integrity checks.
+> 🔒 **Secrets management (v1.0.1):** For sensitive URLs/tokens, put them in `~/.cchooks/secrets.env` (chmod 600) instead of `notify.conf`. The scripts auto-load both, with integrity checks.
 
 Test it:
 ```bash
@@ -348,45 +348,13 @@ They're complementary, not competing. Use both.
 
 ## Changelog
 
-### v3.0.0 (2026-04-02)
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes, bug fixes, and version history.
 
-**🛡️ Security Hardening + Cross-Platform Shim + 34 Fixes**
-
-The "we hired a security auditor and they had opinions" release.
-
-- **Security:**
-  - Credentials moved from `notify.conf` → `~/.cchooks/secrets.env` (chmod 600)
-  - Integrity checks before `source` (rejects files with `$(` or backticks)
-  - `eval` replaced with `bash -c` in notification command backend
-  - All shell→python injection surfaces eliminated (everything uses `os.environ` now)
-  - JSON generation via `python3 json.dump` instead of heredoc string interpolation
-  - Safety gate: +8 blacklist patterns (`eval`, `source <()`, `base64|sh`, `bash -c`, `\sudo`, etc.)
-
-- **Cross-platform:**
-  - New `platform-shim.sh` with 8 portable functions
-  - All 30 platform-specific calls replaced with shim equivalents
-  - `CCHOOKS_TMPDIR` configurable everywhere (11 references)
-  - Git Bash: auto-fallback for `kill -0`, `ps`, `stat`, `date -I`, `sleep`, `env -i`
-
-- **Robustness:**
-  - `cc-safety-gate.sh`: removed `set -e` (was causing false-positive blocks)
-  - `wait-notify.sh`: `rmdir` → `rm -rf` (lock release fix)
-  - `generate-skill-index.sh`: empty skills dir no longer crashes
-  - Session search: `grep -rl` pre-filter (fast even with 1000+ sessions)
-  - `find -print0 | while read` for word-splitting safety
-
-### v2.0.0 (2026-04-02)
-
-**🚀 Interactive Installer**
-
-- TUI module selector, deep-merge settings.json, atomic writes, rollback on failure
-- Security audit: hardened curl timeouts, expanded blacklist, dedup locks
-
-### v1.3.1 (2026-04-01) · Windows Git Bash compatibility
-### v1.3.0 (2026-03-31) · Broadcast mode — multi-channel notifications
-### v1.2.0 (2026-03-31) · Feishu & WeCom webhooks
-### v1.1.0 (2026-03-30) · Git worktree isolation
-### v1.0.0 (2026-03-29) · Initial release
+**Latest (v1.0.0 - 2026-04-12):**
+- 4 P0 bug fixes (quality score 7.5 → 8.5)
+- Multi-account Git support (GitHub + GitLab)
+- SSH key routing configuration
+- Cross-platform compatibility improvements
 
 ## License
 
