@@ -29,6 +29,27 @@
 | 📊 **check-claude-status.sh** | 你手动调 | "那玩意儿还活着吗？" 快速回答。 |
 | 🧹 **reap-orphans.sh** | 定时/手动 | 找到僵尸进程，人道主义清理 |
 | 📚 **generate-skill-index.sh** | 懒加载 | 构建 Skills 索引，让 Claude 知道自己有什么装备 |
+| 💰 **[statusline/](tools/statusline/)** | claude-hud 显示 | 实时 OpenRouter 信用额度监控，附带可视化进度条 |
+
+## 🎨 状态栏工具
+
+### OpenRouter 信用额度监控
+
+为 `claude-hud` 状态栏增强实时 OpenRouter API 余额监控功能。
+
+```
+Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%
+Context ███░░░░░░░ 30% │ Usage █████░░░░░ 45%
+```
+
+**功能特性：**
+- 实时显示信用额度和使用统计
+- 可视化 10 字符进度条（1 格 = 10%）
+- 60 秒智能缓存，最小化 API 调用
+- 友好的错误处理（离线、认证失败等）
+- 快速配置：在 statusLine 中加 `--extra-cmd` 参数
+
+**开始使用：** 详见 [tools/statusline/README_CN.md](tools/statusline/README_CN.md)。
 
 ## 极速上手
 

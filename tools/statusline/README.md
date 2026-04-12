@@ -1,0 +1,162 @@
+# 🪄 Claude HUD StatusLine Tools
+
+Enhance your Claude Code statusline with real-time API credit monitoring and custom metrics.
+
+## Available Tools
+
+### OpenRouter Credit Monitor
+
+Display your OpenRouter API balance in the claude-hud statusline with a visual progress bar.
+
+**Features:**
+- Real-time credit balance and limit display
+- Visual progress bar (10 characters, 10% per block)
+- 60-second smart cache (minimize API calls)
+- Graceful error handling (no key, network offline, auth failed)
+- Lightweight and fast (~100ms with cache)
+
+**Output Format:**
+```
+💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%
+```
+
+Shows:
+- `💰` — Emoji indicator
+- `394.34/500` — Remaining credits / Total limit
+- `▓▓▓▓▓▓▓░░░` — Visual progress bar (79% → 7 filled blocks)
+- `79%` — Percentage
+
+## Installation
+
+### Option 1: Via claude-code-hooks Install Script
+
+```bash
+./install.sh
+# Select "Statusline tools" when prompted
+```
+
+The installer will:
+1. Copy scripts to `~/.claude/scripts/claude-hooks/statusline/`
+2. Guide you through configuration
+3. Update your `settings.json` automatically
+
+### Option 2: Manual Setup
+
+```bash
+# Copy the script
+cp tools/statusline/openrouter-status.sh ~/.claude/scripts/claude-hooks/statusline/
+
+# Make it executable
+chmod +x ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh
+
+# Ensure OPENROUTER_API_KEY is set in your environment
+echo $OPENROUTER_API_KEY  # should show your key
+```
+
+## Configuration
+
+### Add to Claude Code Settings
+
+Edit `~/.claude/settings.json` and update the `statusLine` section to include the `--extra-cmd` parameter:
+
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/path/to/node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "type": "command"
+  }
+}
+```
+
+Or use the installer which handles this automatically.
+
+### Environment Variables
+
+Make sure `OPENROUTER_API_KEY` is available in your shell:
+
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+export OPENROUTER_API_KEY="sk-or-v1-..."
+```
+
+## How It Works
+
+1. **claude-hud** calls `openrouter-status.sh` via `--extra-cmd` parameter
+2. Script checks for valid cache (60-second TTL)
+3. If cache miss, calls `https://openrouter.ai/api/v1/key` API
+4. Parses `limit_remaining` and `limit` from response
+5. Calculates percentage and generates progress bar
+6. Returns JSON: `{ "label": "💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%" }`
+7. claude-hud displays in statusline
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Shows `No Key` | Set `OPENROUTER_API_KEY` environment variable |
+| Shows `Auth Failed` | Check your API key is valid |
+| Shows `Offline` | Network connectivity issue, check curl works |
+| Shows `☐` | Cache file corrupted, try: `rm ~/.claude/openrouter-cache.json` |
+| Slow updates | Cache is working, wait 60 seconds for fresh fetch |
+
+## Customization
+
+### Change Cache TTL
+
+Edit `openrouter-status.sh`:
+```bash
+CACHE_TTL=30  # Change from 60 to 30 seconds
+```
+
+### Change Display Format
+
+Example: Show only percentage
+```bash
+label=$(printf "💰 %d%%\n" "$percent")
+```
+
+Example: Add usage data
+```bash
+usage=$(echo "$response" | jq -r '.data.usage // 0')
+label=$(printf "💰 %.2f/%.0f %s %d%% | Used: %.2f\n" "$remaining" "$limit" "$bar" "$percent" "$usage")
+```
+
+### Low Credit Warning
+
+```bash
+# After calculating percent:
+if (( $(echo "$remaining < 10" | bc -l 2>/dev/null) )); then
+  emoji="🪫"  # Low battery emoji
+else
+  emoji="💰"
+fi
+label=$(printf "%s %.2f/%.0f %s %d%%\n" "$emoji" "$remaining" "$limit" "$bar" "$percent")
+```
+
+## API Details
+
+Uses OpenRouter's `GET /api/v1/key` endpoint:
+
+```bash
+curl https://openrouter.ai/api/v1/key \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+**Response Fields Used:**
+- `data.limit_remaining` — Credits remaining
+- `data.limit` — Total credit limit
+- `data.usage` — Total credits used (optional)
+- `data.usage_daily` — Daily usage (optional)
+
+All calls cached for 60 seconds to stay under rate limits.
+
+## Performance Impact
+
+- **With cache hit**: ~1ms (reads local JSON file)
+- **With cache miss**: ~500-800ms (API call + parsing)
+- **Default**: Cache for 60 seconds → ~1ms most of the time
+- **Network overhead**: Minimal, curl timeout set to 2 seconds
+
+## License
+
+Same as claude-code-hooks main project.

@@ -37,6 +37,27 @@ You fire up Claude Code, assign it a complex task, and go grab coffee. When you 
 | 📊 **check-claude-status.sh** | You | "Is that thing still running?" Quick answer. |
 | 🧹 **reap-orphans.sh** | Cron / manual | Finds zombie Claude processes and puts them down humanely. |
 | 📚 **generate-skill-index.sh** | Lazy | Builds a skill directory so Claude knows what tools it has. |
+| 💰 **[statusline/](tools/statusline/)** | claude-hud display | Real-time OpenRouter credit monitor with visual progress bar. |
+
+## 🎨 Statusline Tools
+
+### OpenRouter Credit Monitor
+
+Enhance your `claude-hud` statusline with real-time OpenRouter API balance monitoring.
+
+```
+Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░░ 79%
+Context ███░░░░░░░ 30% │ Usage █████░░░░░ 45%
+```
+
+**Features:**
+- Real-time credit balance and usage tracking
+- Visual 10-character progress bar (1 block = 10%)
+- 60-second smart caching to minimize API calls
+- Graceful error handling (offline, auth failed, etc.)
+- Quick setup: add `--extra-cmd` to your statusLine config
+
+**Get Started:** See [tools/statusline/README.md](tools/statusline/) for full setup instructions.
 
 ## Quick Start
 
