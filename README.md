@@ -117,6 +117,106 @@ If you want to configure manually, see [tools/statusline/README.md](tools/status
 
 ## Quick Start
 
+### Choose Your Path
+
+Not all installations are created equal. Pick the one that fits your style:
+
+#### 🚀 Path A: One Line, Zero Regrets (Recommended)
+
+**Best for:** Most users, including Windows Git Bash  
+**Time:** ~2 minutes  
+**Difficulty:** ⭐  
+
+Just copy-paste one command. The installer handles everything: environment checks, script installation, module selection, hook registration, and notification setup.
+
+**Pros:**
+- ✅ Fully automated with interactive TUI
+- ✅ Automatic rollback on errors
+- ✅ Module selection built-in
+- ✅ Supports Windows Git Bash natively
+- ✅ One command, walk away
+
+**Cons:**
+- ❌ Less control over what gets installed
+- ❌ Requires piping to bash (though fully auditable)
+
+**[→ See detailed instructions below](#one-line-zero-regrets)**
+
+---
+
+#### 🛠️ Path B: Step-by-Step Manual (I Want Control)
+
+**Best for:** Advanced users, CI/CD integration, custom deployments  
+**Time:** ~10 minutes  
+**Difficulty:** ⭐⭐  
+
+Clone the repo and run each step manually. Full control over placement, configuration, and which modules to enable.
+
+**Pros:**
+- ✅ Complete control — decide what goes where
+- ✅ Easy to integrate into CI/CD pipelines
+- ✅ Audit every step before it runs
+- ✅ Perfect for air-gapped environments (if pre-downloaded)
+- ✅ Windows Git Bash fully supported
+
+**Cons:**
+- ❌ Requires 6 steps instead of 1 command
+- ❌ Manual error recovery
+- ❌ Needs basic bash knowledge
+
+**Steps:**
+1. Clone the repository
+2. Copy scripts to `~/.claude/scripts/claude-hooks/`
+3. Create `notify.conf` with your notification backend
+4. Merge hooks into `~/.claude/settings.json`
+5. (Optional) Configure StatusLine for OpenRouter credit monitoring
+6. Verify everything with test commands
+
+**[→ See detailed instructions below](#step-by-step-manual-i-want-control)**
+
+---
+
+#### 📦 Path C: Fully Offline (Air-Gapped Systems)
+
+**Best for:** Offline development, air-gapped CI/CD, isolated networks  
+**Time:** ~15 minutes (mostly waiting for download)  
+**Difficulty:** ⭐⭐  
+
+Pre-download on a machine with internet, then transfer to the offline system. Identical to Path B after the download step.
+
+**Pros:**
+- ✅ Works completely offline (after initial download)
+- ✅ Same manual control as Path B
+- ✅ No network calls on target machine
+- ✅ Audit-friendly
+
+**Cons:**
+- ❌ Requires two machines (one with internet)
+- ❌ Manual transfer of files
+- ❌ Same 6-step setup as Path B
+
+**Key difference:** Download on connected machine, then transfer the `claude-code-hooks/` directory via USB, scp, etc.
+
+**[→ See detailed instructions below](#fully-offline-air-gapped-systems)**
+
+---
+
+### Path Comparison
+
+| Aspect | Path A | Path B | Path C |
+|--------|--------|--------|--------|
+| **Time** | ~2 min | ~10 min | ~15 min |
+| **Difficulty** | ⭐ | ⭐⭐ | ⭐⭐ |
+| **Control** | Low | High | High |
+| **Error recovery** | Automatic | Manual | Manual |
+| **Internet required** | During | During | No (if pre-downloaded) |
+| **Best for** | Most users | Power users, CI/CD | Air-gapped |
+| **Windows Git Bash** | ✅ | ✅ Recommended | ✅ |
+| **Dependencies check** | Automatic | Manual | Manual |
+| **Module selection** | TUI | Manual editing | Manual editing |
+
+---
+
 ### One Line, Zero Regrets
 
 ```bash
@@ -178,15 +278,295 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 # Then hand-edit ~/.claude/settings.json — see Hook Registration below
 ```
 
+---
+
+### Step-by-Step Manual (I Want Control)
+
+This is the detailed version of **Path B**. Follow all 6 steps for full control.
+
+#### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git /tmp/claude-code-hooks
+cd /tmp/claude-code-hooks
+```
+
+> 🇨🇳 **In China or GitHub is slow?**
+> ```bash
+> git clone https://ghfast.top/https://github.com/Gopherlinzy/claude-code-hooks.git /tmp/claude-code-hooks
+> cd /tmp/claude-code-hooks
+> ```
+
+#### Step 2: Copy Scripts
+
+Create the installation directory and copy all scripts:
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+mkdir -p "${INSTALL_DIR}"
+
+# Copy main hook scripts
+cp scripts/*.sh "${INSTALL_DIR}/"
+chmod +x "${INSTALL_DIR}"/*.sh
+
+# Copy statusline tools (optional, for OpenRouter credit monitoring)
+mkdir -p "${INSTALL_DIR}/statusline"
+cp tools/statusline/*.sh "${INSTALL_DIR}/statusline/"
+chmod +x "${INSTALL_DIR}/statusline"/*.sh
+
+# Copy utility tools (for future updates)
+cp tools/merge-hooks.js "${INSTALL_DIR}/"
+cp tools/select-modules.js "${INSTALL_DIR}/"
+```
+
+**Windows (Git Bash) note:** The paths above work as-is in Git Bash. No special handling needed.
+
+#### Step 3: Create notify.conf
+
+Choose your notification backend and configure it:
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+cat > "${INSTALL_DIR}/notify.conf" << 'EOF'
+CC_NOTIFY_BACKEND=auto
+CC_WAIT_NOTIFY_SECONDS=30
+
+# Uncomment and configure your backend(s):
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+# CC_BARK_URL=https://api.day.app/YOUR_KEY
+# CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+# CC_TELEGRAM_CHAT_ID=987654321
+# CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+EOF
+```
+
+**For sensitive credentials** (webhook URLs with tokens), put them in `~/.cchooks/secrets.env` instead:
+
+```bash
+mkdir -p "${HOME}/.cchooks"
+cat > "${HOME}/.cchooks/secrets.env" << 'EOF'
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+EOF
+chmod 600 "${HOME}/.cchooks/secrets.env"
+```
+
+#### Step 4: Merge Hooks into settings.json
+
+This step registers all hooks into your Claude Code settings file (preserving any existing hooks).
+
+**macOS / Linux / WSL2:**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" \
+  <(node -e "
+const fs = require('fs');
+const dir = '${INSTALL_DIR}'.replace(/'/g, '');
+const cmd = (script) => dir + '/' + script;
+const hooks = {
+  hooks: {
+    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] },
+      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] }
+    ],
+    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }],
+    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
+  }
+};
+fs.writeFileSync('/dev/stdout', JSON.stringify(hooks, null, 2));
+") \
+  "${SETTINGS}"
+```
+
+**Windows (Git Bash):**
+
+For Windows, add `bash ` prefix to all hook commands:
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+node -e "
+const fs = require('fs');
+const dir = '${INSTALL_DIR}'.replace(/'/g, '');
+const prefix = 'bash ';
+const cmd = (script) => prefix + dir + '/' + script;
+const hooks = {
+  hooks: {
+    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] },
+      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] }
+    ],
+    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }],
+    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
+  }
+};
+fs.writeFileSync('/tmp/hooks-patch.json', JSON.stringify(hooks, null, 2));
+" && node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" /tmp/hooks-patch.json "${SETTINGS}"
+rm -f /tmp/hooks-patch.json
+```
+
+#### Step 5: (Optional) Configure StatusLine for OpenRouter Credits
+
+If you want real-time OpenRouter credit monitoring in your claude-hud statusline:
+
+**macOS / Linux / WSL2:**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud/"*/ 2>/dev/null | \
+    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
+    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
+    tail -1 | cut -f2-)
+
+if [ -z "$PLUGIN_DIR" ]; then
+    echo "⚠️  claude-hud plugin not found — StatusLine skipped"
+else
+    node -e "
+const fs = require('fs');
+const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
+settings.statusLine = {
+    command: 'bash -c \"plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"bash ${INSTALL_DIR}/statusline/openrouter-status.sh\\\"\"',
+    type: 'command'
+};
+fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
+" && echo "✅ StatusLine configured"
+fi
+```
+
+**Windows (Git Bash):**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud/"*/ 2>/dev/null | \
+    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
+    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
+    tail -1 | cut -f2-)
+
+if [ -z "$PLUGIN_DIR" ]; then
+    echo "⚠️  claude-hud plugin not found — StatusLine skipped"
+else
+    node -e "
+const fs = require('fs');
+const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
+settings.statusLine = {
+    command: 'bash -c \"plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"bash ${INSTALL_DIR}/statusline/openrouter-status.sh\\\"\"',
+    type: 'command'
+};
+fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
+" && echo "✅ StatusLine configured"
+fi
+```
+
+#### Step 6: Verify Installation
+
+Run these checks to ensure everything is set up correctly:
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+# Check all scripts are executable
+echo "=== Checking hook scripts ==="
+for f in "${INSTALL_DIR}"/*.sh; do
+    if bash -n "$f" 2>/dev/null; then
+        echo "✅ $(basename "$f")"
+    else
+        echo "❌ $(basename "$f") — syntax error"
+    fi
+done
+
+# Check settings.json is valid JSON
+echo "=== Checking settings.json ==="
+if python3 -c "import json; json.load(open('${SETTINGS}'))" 2>/dev/null; then
+    echo "✅ settings.json is valid JSON"
+else
+    echo "❌ settings.json is invalid"
+fi
+
+# Test a notification (if configured)
+echo "=== Testing notification ==="
+if "${INSTALL_DIR}/send-notification.sh" "Claude Code Hooks test message 🦞"; then
+    echo "✅ Notification sent"
+else
+    echo "⚠️  Notification backend not configured yet"
+fi
+```
+
+**If any checks fail,** see [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for solutions.
+
+---
+
+### Fully Offline (Air-Gapped Systems)
+
+This is the detailed version of **Path C**. Use this when the target system has no internet access.
+
+#### Step 0: Prepare on a Machine with Internet
+
+On a machine with internet access:
+
+```bash
+# Clone the repository
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+
+# Optionally, compress for transfer (if space is a concern)
+tar czf claude-code-hooks.tar.gz claude-code-hooks/
+```
+
+Transfer the `claude-code-hooks/` directory (or the compressed tar.gz) to the target machine via USB, scp, or another method.
+
+#### Steps 1-6: Same as Path B
+
+Once you have the `claude-code-hooks/` directory on the offline machine, follow **Path B steps 1-6** exactly as written:
+
+1. ✅ Clone → Skip (already have the directory)
+2. ✅ Copy scripts
+3. ✅ Create notify.conf
+4. ✅ Merge hooks into settings.json
+5. ✅ (Optional) Configure StatusLine
+6. ✅ Verify installation
+
+**The only difference:** Instead of cloning from GitHub in Step 1, just navigate to wherever you transferred the `claude-code-hooks/` directory:
+
+```bash
+# Instead of: git clone https://github.com/.../claude-code-hooks.git /tmp/claude-code-hooks
+# You already have it, so just:
+cd /path/to/claude-code-hooks
+# Then continue with Step 2 (copy scripts) and beyond
+```
+
+---
+
 ## Platform Support
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| 🍎 **macOS** | ✅ Full support | Needs bash 4.0+ (`brew install bash` if stuck on 3.2) |
-| 🐧 **Linux** | ✅ Full support | `apt install bash curl python3 jq` and you're golden |
-| 🪟 **WSL2** | ✅ Full support | It's just Linux with extra steps |
-| 🪟 **Git Bash** | ⚠️ Hooks work | Background timers unreliable. Notifications + safety gate work fine. |
-| 🪟 **PowerShell** | ❌ | Use WSL2. Seriously. |
+| Platform | Status | Installation | Notes | Issues |
+|----------|--------|--------------|-------|--------|
+| 🍎 **macOS** | ✅ Full | `./install.sh` | Needs bash 4.0+ (`brew install bash` if on 3.2) | None known |
+| 🐧 **Linux** | ✅ Full | `./install.sh` | `apt install bash curl python3 jq` | None known |
+| 🪟 **WSL2** | ✅ Full | `./install.sh` (Linux mode) | Plugin cache in WSL Linux home, not Windows | None known |
+| 🪟 **Git Bash** | ✅ Hooks + ⚠️ StatusLine | `./install.sh` or manual | Hooks ✅ work; StatusLine has [known bugs](docs/TROUBLESHOOTING.md#bug-2-statusline-command-cascading-quotes-v101) | [See Git Bash issues](docs/TROUBLESHOOTING.md#windows-git-bash-specific) |
+| 🪟 **PowerShell / cmd** | ❌ | Use WSL2 | Not supported — hook scripts are bash only | Use [Windows Subsystem for Linux](https://learn.microsoft.com/windows/wsl/) |
+
+**Key differences:**
+
+- **macOS/Linux:** Full support, everything works out-of-the-box
+- **WSL2:** Full support, use Linux instructions (plugin cache must be in WSL filesystem)
+- **Git Bash:** Hooks work ✅, StatusLine configuration has known path escaping issues (v1.0.1). [See workarounds](docs/TROUBLESHOOTING.md#windows-git-bash-specific)
+- **PowerShell:** Not supported. Use WSL2 for Windows native development.
+
+> **Windows users:** Most issues are path-related and [documented in TROUBLESHOOTING](docs/TROUBLESHOOTING.md#windows-git-bash-specific). If install fails, [check the Windows troubleshooting section](docs/TROUBLESHOOTING.md#installation-failures).
 
 ### v1.0.1: Cross-Platform Shim & Security Hardening
 
@@ -324,11 +704,21 @@ The installer handles this, but for the manual crowd:
 
 To add real-time OpenRouter credit monitoring to claude-hud statusline:
 
+**Recommended:** Use the built-in setup skill
+```bash
+/claude-hud:setup
+```
+This automatically detects your platform and generates the correct command.
+
+---
+
+**Manual configuration (if needed):**
+
 **macOS / Linux:**
 ```json
 {
   "statusLine": {
-    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/usr/local/bin/node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
     "type": "command"
   }
 }
@@ -344,12 +734,40 @@ To add real-time OpenRouter credit monitoring to claude-hud statusline:
 }
 ```
 
+> **Note:** On Windows, if the command has errors, see [StatusLine Command Errors](docs/TROUBLESHOOTING.md#statusline-command-errors).
+
 **Requirements:**
 - `OPENROUTER_API_KEY` environment variable must be set
 - `claude-hud` plugin must be installed
 - Node.js 18+ available in PATH
 
 See [tools/statusline/README.md](tools/statusline/) for full setup guide.
+
+## Troubleshooting
+
+**Something not working?** Start here for quick answers.
+
+### Quick Links
+
+- 🔧 **Hooks registered but not firing?** → [Hooks Not Firing](docs/TROUBLESHOOTING.md#hooks-not-firing)
+- 💻 **Installation failed on Windows?** → [Installation Failures](docs/TROUBLESHOOTING.md#installation-failures)
+- 📊 **StatusLine not showing?** → [StatusLine Command Errors](docs/TROUBLESHOOTING.md#statusline-command-errors)
+- 🪟 **Windows-specific issues?** → [Windows Git Bash Specific](docs/TROUBLESHOOTING.md#windows-git-bash-specific)
+- 📖 **Full troubleshooting guide:** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+### Quick Checklist
+
+Before opening an issue:
+
+- [ ] Restart Claude Code after installing hooks
+- [ ] Check `~/.claude/settings.json` contains `"hooks"` key
+- [ ] Verify `notify.conf` is readable: `cat ~/.claude/scripts/claude-hooks/notify.conf`
+- [ ] Test a hook manually: `bash -n ~/.claude/scripts/claude-hooks/cc-stop-hook.sh`
+- [ ] On Windows? Verify Node.js in PATH: `node --version`
+
+**Still stuck?** See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) or [open a GitHub issue](https://github.com/Gopherlinzy/claude-code-hooks/issues).
+
+---
 
 ## Hardening
 
