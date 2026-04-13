@@ -731,6 +731,32 @@ To add real-time OpenRouter credit monitoring to claude-hud statusline:
 
 See [tools/statusline/README.md](tools/statusline/) for full setup guide.
 
+## Troubleshooting
+
+**Something not working?** Start here for quick answers.
+
+### Quick Links
+
+- 🔧 **Hooks registered but not firing?** → [Hooks Not Firing](docs/TROUBLESHOOTING.md#hooks-not-firing)
+- 💻 **Installation failed on Windows?** → [Installation Failures](docs/TROUBLESHOOTING.md#installation-failures)
+- 📊 **StatusLine not showing?** → [StatusLine Command Errors](docs/TROUBLESHOOTING.md#statusline-command-errors)
+- 🪟 **Windows-specific issues?** → [Windows Git Bash Specific](docs/TROUBLESHOOTING.md#windows-git-bash-specific)
+- 📖 **Full troubleshooting guide:** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+### Quick Checklist
+
+Before opening an issue:
+
+- [ ] Restart Claude Code after installing hooks
+- [ ] Check `~/.claude/settings.json` contains `"hooks"` key
+- [ ] Verify `notify.conf` is readable: `cat ~/.claude/scripts/claude-hooks/notify.conf`
+- [ ] Test a hook manually: `bash -n ~/.claude/scripts/claude-hooks/cc-stop-hook.sh`
+- [ ] On Windows? Verify Node.js in PATH: `node --version`
+
+**Still stuck?** See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) or [open a GitHub issue](https://github.com/Gopherlinzy/claude-code-hooks/issues).
+
+---
+
 ## Hardening
 
 Things we're proud of:
