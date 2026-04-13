@@ -87,9 +87,20 @@ The tool outputs a JSON snippet you can copy directly into `~/.claude/settings.j
 If you want to configure manually, see [tools/statusline/README.md](tools/statusline/) for detailed instructions.
 
 **Requirements:**
-- `OPENROUTER_API_KEY` environment variable set
+- `OPENROUTER_API_KEY` environment variable set (or `ANTHROPIC_AUTH_TOKEN` as fallback)
 - `claude-hud` plugin (auto-installed by Claude Code)
 - Node.js 18+ (already required by Claude Code)
+
+> **macOS/Linux:** `jq` is auto-detected from PATH
+>
+> **Windows (Git Bash):** Manual jq installation required
+> ```bash
+> mkdir -p ~/.claude/scripts
+> curl -fsSL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe \
+>   -o ~/.claude/scripts/jq.exe
+> chmod +x ~/.claude/scripts/jq.exe
+> ```
+> The statusline script will auto-detect it after restart.
 
 ## Quick Start
 
