@@ -60,13 +60,18 @@ Claude Haiku 4.5 │ .openclaw │ 💰 394.34/500 ▓▓▓▓▓▓▓░░�
 
 **Step 1: Install claude-hud plugin**
 
-Claude automatically downloads and updates `claude-hud`. You can verify it's installed by checking:
-```bash
-ls "${HOME}/.claude/plugins/cache/claude-hud/"
-# If empty, claude-hud will auto-install on next Claude Code restart
+In Claude Code, run:
+```
+/plugin marketplace add jarrodwatts/claude-hud
+/plugin install claude-hud
 ```
 
-**Step 2: Run the setup tool**
+Then configure the statusline:
+```
+/claude-hud:setup
+```
+
+**Step 2: Run the OpenRouter setup tool**
 
 ```bash
 ~/.claude/scripts/claude-hooks/setup-statusline.sh
@@ -76,11 +81,19 @@ This tool will:
 - ✅ Verify claude-hud is installed
 - ✅ Generate the correct `statusLine` config for your OS
 - ✅ Guide you to add `OPENROUTER_API_KEY` to your shell
-- ✅ Show you where to paste the config
+- ✅ Show you exactly where to paste the config
 
 **Step 3: Paste config into settings.json**
 
-The tool outputs a JSON snippet you can copy directly into `~/.claude/settings.json`.
+The tool outputs a JSON snippet you can copy directly into `~/.claude/settings.json`:
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'node /path/to/claude-hud/index.js --extra-cmd \"...\"'",
+    "type": "command"
+  }
+}
+```
 
 ### Manual Setup (if you prefer)
 
