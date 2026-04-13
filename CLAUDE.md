@@ -125,36 +125,54 @@ rm -f "$PATCH_FILE"
 
 If the user wants real-time OpenRouter credit monitoring in claude-hud:
 
-```bash
-# Add statusLine configuration to settings.json
-STATUSLINE_CMD="bash ${INSTALL_DIR}/statusline/openrouter-status.sh"
+**Recommended: Use the statusline-setup agent**
 
-# Detect platform for command prefix
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) STATUSLINE_CMD="bash ${STATUSLINE_CMD}" ;;
-esac
+```bash
+/claude-hud:setup
+```
+
+This automatically:
+- Detects your platform (Windows/macOS/Linux)
+- Finds the installed claude-hud plugin
+- Generates correct command paths
+- Updates settings.json safely
+
+**Alternative: Manual setup** (if agent unavailable)
+
+```bash
+SETTINGS="${HOME}/.claude/settings.json"
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
 
 # Find claude-hud plugin directory
-PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud"/*/ 2>/dev/null | \
-    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
-    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
-    tail -1 | cut -f2-)
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud"/*/ 2>/dev/null | sort -V | tail -1)
 
 if [ -z "$PLUGIN_DIR" ]; then
-    warn "claude-hud plugin not found — statusline skipped"
-else
-    # Update settings.json with statusLine command
-    node -e "
-        const fs = require('fs');
-        const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
-        settings.statusLine = {
-            command: \\\`bash -c 'plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"${STATUSLINE_CMD}\\\"'\\\`,
-            type: 'command'
-        };
-        fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
-    "
+    echo "❌ claude-hud plugin not found"
+    exit 1
 fi
+
+# Platform detection
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) 
+        CMD="bash ${INSTALL_DIR}/statusline/openrouter-status.sh" 
+        ;;
+    *)
+        CMD="${INSTALL_DIR}/statusline/openrouter-status.sh"
+        ;;
+esac
+
+# Save to settings.json (simple jq command)
+jq ".statusLine = {
+    command: \"bash -c 'plugin_dir=${PLUGIN_DIR}; exec node \${plugin_dir}dist/index.js --extra-cmd \\\"${CMD}\\\"'\",
+    type: \"command\"
+}" "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+
+echo "✅ StatusLine configured"
 ```
+
+**Platform notes:**
+- **Windows (Git Bash/MSYS)**: Commands use `bash` prefix; paths converted to forward slashes
+- **macOS/Linux**: Direct execution; no prefix needed
 
 ### 5. Verify
 
