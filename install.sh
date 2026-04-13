@@ -124,7 +124,7 @@ acquire_lock() {
 }
 
 release_lock() {
-  rm -rf "$LOCKDIR" 2>/dev/null || true
+  [ -d "$LOCKDIR" ] && rm -rf "$LOCKDIR" 2>/dev/null || true
 }
 
 # 备份 settings.json（时间戳后缀，幂等）
@@ -138,11 +138,15 @@ backup_settings() {
 
 # 保留最近 5 份备份，清理旧的（支持文件名有空格）
 cleanup_old_backups() {
-  local backups count
-  count=$(find "$(dirname "$SETTINGS_FILE")" -maxdepth 1 -name 'settings.json.bak.*' -type f 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$count" -gt 5 ]; then
-    find "$(dirname "$SETTINGS_FILE")" -maxdepth 1 -name 'settings.json.bak.*' -type f 2>/dev/null \
-      | sort -r | tail -n +6 | while read -r old; do
+  local backups
+  # find 跨平台（含 Windows Git Bash），mapfile 保证文件名含空格时安全
+  mapfile -t backups < <(
+    find "$(dirname "$SETTINGS_FILE")" -maxdepth 1 \
+      -name 'settings.json.bak.*' -type f 2>/dev/null \
+      | sort -r
+  ) || return 0
+  if [ "${#backups[@]}" -gt 5 ]; then
+    for old in "${backups[@]:5}"; do
       rm -f "$old"
     done
   fi
@@ -186,7 +190,7 @@ _on_error_handler() {
 }
 
 cleanup_all() {
-  for d in "${_CLEANUP_DIRS[@]}"; do
+  for d in "${_CLEANUP_DIRS[@]+"${_CLEANUP_DIRS[@]}"}"; do
     rm -rf "$d" 2>/dev/null || true
   done
   release_lock
@@ -272,13 +276,15 @@ inject_statusline() {
   STATUSLINE_CMD="${statusline_script}" \
   NODE_EXE="${node_exe}" \
   INSTALL_DIR_ENV="${INSTALL_DIR}" \
+  SETTINGS_FILE_ENV="${SETTINGS_FILE}" \
   PATCH_OUTPUT="${SETTINGS_FILE}.statusline-patch.$$" \
   "$node_exe" -e "
     const fs = require('fs');
-    const path = require('path');
 
-    // 读取当前 settings.json
-    const settingsPath = '${SETTINGS_FILE}';
+    // 读取当前 settings.json（路径通过环境变量传递，避免路径注入）
+    const settingsPath = process.env.SETTINGS_FILE_ENV;
+    const nodeExe = process.env.NODE_EXE;
+    const statuslineScript = process.env.STATUSLINE_CMD;
     let current = {};
     if (fs.existsSync(settingsPath)) {
       try {
@@ -291,17 +297,11 @@ inject_statusline() {
 
     // 构建现有 statusLine 的备份并更新
     if (current.statusLine) {
-      // 备份现有 statusLine 配置
       current._statusLine_backup = current.statusLine;
     }
 
-    // 获取 node 路径和脚本路径
-    const nodeExe = '${NODE_EXE}';
-    const installDir = '${INSTALL_DIR_ENV}';
-    const statuslineScript = '${statusline_script}';
-
     // 构建完整的 statusLine 命令（支持 macOS 和 Windows）
-    const pluginFinder = \`bash -c 'plugin_dir=\$(ls -d \"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print \$(NF-1) \"\\\\t\" \$(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"\${nodeExe}\" \"\${plugin_dir}dist/index.js\" --extra-cmd \"${statusline_script}\"'\`;
+    const pluginFinder = \`bash -c 'plugin_dir=\$(ls -d \"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print \$(NF-1) \"\\\\t\" \$(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"\${nodeExe}\" \"\${plugin_dir}dist/index.js\" --extra-cmd \"\${statuslineScript}\"'\`;
 
     current.statusLine = {
       command: pluginFinder,
@@ -491,7 +491,7 @@ cmd_update() {
 
   # 克隆最新代码
   local _update_tmp
-  _update_tmp="$(mktemp -d)"
+  _update_tmp="$(mktemp -d)" || { err "mktemp failed"; release_lock; exit 1; }
   # shellcheck disable=SC2064
   _CLEANUP_DIRS+=("${_update_tmp}")
 
@@ -742,6 +742,9 @@ run_install() {
         info "Installation cancelled."
         exit 0
       fi
+    elif [ "$_select_rc" -ne 0 ]; then
+      rm -f "$_select_tmp"
+      warn "Module selector exited with code ${_select_rc} — using defaults (all modules enabled)"
     elif [ -f "$_select_tmp" ]; then
       _selected=$(cat "$_select_tmp")
       rm -f "$_select_tmp"
@@ -900,12 +903,11 @@ CC_NOTIFY_TARGET="${CC_TARGET:-}"
 CC_WAIT_NOTIFY_SECONDS=${CC_TIMEOUT:-30}
 CONF
 
-    # Webhook URL 写入（非 none 且有值时，转义特殊字符）
+    # Webhook URL 写入（非 none 且有值时，单引号包裹，转义内部单引号）
     if [ "$CC_CHANNEL" != "none" ] && [ -n "${WEBHOOK_URL:-}" ]; then
-      # 转义 URL 中的特殊字符防止注入
       local escaped_url
-      escaped_url=$(printf '%s\n' "$WEBHOOK_URL" | sed 's/[\/&]/\\&/g')
-      echo "NOTIFY_${CHANNEL_UPPER}_URL=\"${escaped_url}\"" >> "$CONF_FILE"
+      escaped_url="${WEBHOOK_URL//\'/\'\\\'\'}"
+      printf "NOTIFY_%s_URL='%s'\n" "${CHANNEL_UPPER}" "${escaped_url}" >> "$CONF_FILE"
     fi
     ok "Created notify.conf (channel: ${CC_CHANNEL})"
   fi
