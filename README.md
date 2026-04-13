@@ -180,13 +180,22 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 
 ## Platform Support
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| 🍎 **macOS** | ✅ Full support | Needs bash 4.0+ (`brew install bash` if stuck on 3.2) |
-| 🐧 **Linux** | ✅ Full support | `apt install bash curl python3 jq` and you're golden |
-| 🪟 **WSL2** | ✅ Full support | It's just Linux with extra steps |
-| 🪟 **Git Bash** | ⚠️ Hooks work | Background timers unreliable. Notifications + safety gate work fine. |
-| 🪟 **PowerShell** | ❌ | Use WSL2. Seriously. |
+| Platform | Status | Installation | Notes | Issues |
+|----------|--------|--------------|-------|--------|
+| 🍎 **macOS** | ✅ Full | `./install.sh` | Needs bash 4.0+ (`brew install bash` if on 3.2) | None known |
+| 🐧 **Linux** | ✅ Full | `./install.sh` | `apt install bash curl python3 jq` | None known |
+| 🪟 **WSL2** | ✅ Full | `./install.sh` (Linux mode) | Plugin cache in WSL Linux home, not Windows | None known |
+| 🪟 **Git Bash** | ✅ Hooks + ⚠️ StatusLine | `./install.sh` or manual | Hooks ✅ work; StatusLine has [known bugs](docs/TROUBLESHOOTING.md#bug-2-statusline-command-cascading-quotes-v101) | [See Git Bash issues](docs/TROUBLESHOOTING.md#windows-git-bash-specific) |
+| 🪟 **PowerShell / cmd** | ❌ | Use WSL2 | Not supported — hook scripts are bash only | Use [Windows Subsystem for Linux](https://learn.microsoft.com/windows/wsl/) |
+
+**Key differences:**
+
+- **macOS/Linux:** Full support, everything works out-of-the-box
+- **WSL2:** Full support, use Linux instructions (plugin cache must be in WSL filesystem)
+- **Git Bash:** Hooks work ✅, StatusLine configuration has known path escaping issues (v1.0.1). [See workarounds](docs/TROUBLESHOOTING.md#windows-git-bash-specific)
+- **PowerShell:** Not supported. Use WSL2 for Windows native development.
+
+> **Windows users:** Most issues are path-related and [documented in TROUBLESHOOTING](docs/TROUBLESHOOTING.md#windows-git-bash-specific). If install fails, [check the Windows troubleshooting section](docs/TROUBLESHOOTING.md#installation-failures).
 
 ### v1.0.1: Cross-Platform Shim & Security Hardening
 
