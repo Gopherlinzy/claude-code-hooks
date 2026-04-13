@@ -704,11 +704,21 @@ The installer handles this, but for the manual crowd:
 
 To add real-time OpenRouter credit monitoring to claude-hud statusline:
 
+**Recommended:** Use the built-in setup skill
+```bash
+/claude-hud:setup
+```
+This automatically detects your platform and generates the correct command.
+
+---
+
+**Manual configuration (if needed):**
+
 **macOS / Linux:**
 ```json
 {
   "statusLine": {
-    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"/usr/local/bin/node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); exec \"node\" \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
     "type": "command"
   }
 }
@@ -723,6 +733,8 @@ To add real-time OpenRouter credit monitoring to claude-hud statusline:
   }
 }
 ```
+
+> **Note:** On Windows, if the command has errors, see [StatusLine Command Errors](docs/TROUBLESHOOTING.md#statusline-command-errors).
 
 **Requirements:**
 - `OPENROUTER_API_KEY` environment variable must be set
