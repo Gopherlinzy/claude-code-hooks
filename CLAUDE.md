@@ -69,6 +69,10 @@ Use the merge tool (preserves existing hooks):
 ```bash
 SETTINGS="${HOME}/.claude/settings.json"
 
+# Cross-platform temporary file (Windows: $TEMP, Unix: /tmp)
+PATCH_FILE="${TMPDIR:-${TEMP:-/tmp}}/hooks-patch.json"
+mkdir -p "$(dirname "$PATCH_FILE")" || exit 1
+
 # Detect platform → decide command prefix
 # Windows (Git Bash/MSYS/Cygwin): .sh files need "bash " prefix
 # macOS/Linux: direct execution works
@@ -78,11 +82,22 @@ case "$(uname -s)" in
 esac
 
 # Generate hooks-patch.json (platform-aware)
-node -e "
+# Pass paths via environment to avoid Node.js path mangling in inline scripts
+INSTALL_DIR_ENV="${INSTALL_DIR}" PREFIX_ENV="${CMD_PREFIX}" PATCH_FILE_ENV="$PATCH_FILE" node -e "
 const fs = require('fs');
-const dir = '${INSTALL_DIR}'.replace(/'/g, '');
-const prefix = '${CMD_PREFIX}';
-const cmd = (script) => prefix + dir + '/' + script;
+const path = require('path');
+
+// Get values from environment (safer than shell variable substitution)
+const dir = process.env.INSTALL_DIR_ENV;
+const prefix = process.env.PREFIX_ENV || '';
+const patchFile = process.env.PATCH_FILE_ENV;
+
+if (!dir || !patchFile) {
+  console.error('Error: INSTALL_DIR_ENV or PATCH_FILE_ENV not set');
+  process.exit(1);
+}
+
+const cmd = (script) => prefix + path.join(dir, script).replace(/\\\\/g, '/');
 const hooks = {
   hooks: {
     Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
@@ -96,13 +111,14 @@ const hooks = {
     UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
   }
 };
-fs.writeFileSync('/tmp/hooks-patch.json', JSON.stringify(hooks, null, 2));
+
+fs.writeFileSync(patchFile, JSON.stringify(hooks, null, 2));
 console.log('OK — platform: ' + (prefix ? 'Windows (bash prefix)' : 'Unix (direct)'));
 "
 
 # Deep merge
-node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" /tmp/hooks-patch.json "${SETTINGS}"
-rm -f /tmp/hooks-patch.json
+node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" "$PATCH_FILE" "${SETTINGS}"
+rm -f "$PATCH_FILE"
 ```
 
 ### 4b. Configure StatusLine (Optional)
