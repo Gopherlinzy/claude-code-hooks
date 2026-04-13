@@ -13,13 +13,20 @@ set -e
 CACHE_FILE="${HOME}/.claude/openrouter-cache.json"
 CACHE_TTL=60  # 秒
 
+# Windows/macOS/Linux 兼容性：jq 路径兜底
+JQ=$(command -v jq 2>/dev/null || echo "${HOME}/.claude/scripts/jq.exe")
+
+# OpenRouter API Key 兼容性：支持 ANTHROPIC_AUTH_TOKEN fallback
+OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-$ANTHROPIC_AUTH_TOKEN}"
+
 # 检查缓存是否仍然有效
 check_cache() {
   if [[ ! -f "$CACHE_FILE" ]]; then
     return 1
   fi
 
-  local mtime=$(stat -f%m "$CACHE_FILE" 2>/dev/null || echo 0)
+  # stat 语法兼容性：GNU stat (-c%Y) vs BSD stat (-f%m)
+  local mtime=$(stat -c%Y "$CACHE_FILE" 2>/dev/null || stat -f%m "$CACHE_FILE" 2>/dev/null || echo 0)
   local now=$(date +%s)
   local age=$((now - mtime))
 
@@ -59,11 +66,11 @@ fetch_from_api() {
 
   # 从响应中提取 limit_remaining 和 limit（字段在 .data 下）
   local remaining limit percent label
-  remaining=$(echo "$response" | jq -r '.data.limit_remaining // 0' 2>/dev/null || echo "0")
-  limit=$(echo "$response" | jq -r '.data.limit // 0' 2>/dev/null || echo "0")
+  remaining=$(echo "$response" | "$JQ" -r '.data.limit_remaining // 0' 2>/dev/null || echo "0")
+  limit=$(echo "$response" | "$JQ" -r '.data.limit // 0' 2>/dev/null || echo "0")
 
-  # 计算百分比和进度条（使用 awk 避免 bc 精度问题）
-  if (( $(echo "$limit > 0" | bc -l 2>/dev/null || echo 0) )); then
+  # 计算百分比和进度条（使用 awk，兼容 macOS/Linux/Windows，避免 bc 依赖）
+  if awk "BEGIN { exit ($limit > 0) ? 0 : 1 }"; then
     percent=$(awk "BEGIN {printf \"%.0f\", $remaining / $limit * 100}" 2>/dev/null || echo "0")
     # 进度条：10 个字符，每个字符代表 10%
     local filled=$((percent / 10))
