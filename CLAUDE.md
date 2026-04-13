@@ -5,6 +5,18 @@
 
 ## Installation Steps
 
+### 0. Check if already cloned
+
+**If the user already has the files locally:**
+```bash
+ls -d ~/projects/claude-code-hooks 2>/dev/null && echo "✓ Already cloned" || echo "✗ Need to clone"
+```
+
+**Choose your path:**
+- **Already cloned locally?** → Skip to step 2 (use your local path instead of `/tmp/claude-code-hooks`)
+- **Need to clone?** → Continue to step 1
+- **Want one-line install?** → Use `install.sh` from the repo directly
+
 ### 1. Clone the repo
 
 ```bash
@@ -121,23 +133,61 @@ node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" "$PATCH_FILE" "${SETTINGS}"
 rm -f "$PATCH_FILE"
 ```
 
-### 4b. Configure StatusLine (Optional)
+### 4b. Configure StatusLine for OpenRouter Monitoring (Optional)
 
-If the user wants real-time OpenRouter credit monitoring in claude-hud:
+If the user wants real-time OpenRouter credit monitoring in their statusline:
 
-**Recommended: Use the statusline-setup agent**
+**Prerequisites: Install and configure claude-hud plugin first**
+
+1. Add claude-hud to the plugin marketplace:
+```bash
+/plugin marketplace add jarrodwatts/claude-hud
+```
+
+2. Install the claude-hud plugin:
+```bash
+/plugin install claude-hud
+```
+
+3. Configure claude-hud (auto-setup):
+```bash
+/claude-hud:setup
+```
+
+**Then configure OpenRouter credit monitoring**
+
+Once claude-hud is installed, use the recommended method:
 
 ```bash
 /claude-hud:setup
 ```
 
+Or run the setup tool:
+```bash
+~/.claude/scripts/claude-hooks/setup-statusline.sh
+```
+
 This automatically:
 - Detects your platform (Windows/macOS/Linux)
 - Finds the installed claude-hud plugin
-- Generates correct command paths
+- Generates correct command paths for openrouter-status.sh
 - Updates settings.json safely
 
-**Alternative: Manual setup** (if agent unavailable)
+**Check: Is claude-hud installed?**
+
+```bash
+# Verify claude-hud is installed before proceeding
+if [ ! -d "${HOME}/.claude/plugins/cache/claude-hud" ]; then
+    echo "❌ claude-hud not found. Install it first:"
+    echo "  /plugin marketplace add jarrodwatts/claude-hud"
+    echo "  /plugin install claude-hud"
+    echo "  /claude-hud:setup"
+    exit 1
+fi
+echo "✅ claude-hud found"
+```
+
+**Alternative: Manual setup** (if automated setup unavailable)
 
 ```bash
 SETTINGS="${HOME}/.claude/settings.json"
@@ -147,7 +197,10 @@ INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
 PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud"/*/ 2>/dev/null | sort -V | tail -1)
 
 if [ -z "$PLUGIN_DIR" ]; then
-    echo "❌ claude-hud plugin not found"
+    echo "❌ claude-hud plugin not found. Please install it first:"
+    echo "  /plugin marketplace add jarrodwatts/claude-hud"
+    echo "  /plugin install claude-hud"
+    echo "  /claude-hud:setup"
     exit 1
 fi
 
@@ -191,6 +244,27 @@ python3 -c "import json; json.load(open('${SETTINGS}')); print('✅ settings.jso
 
 ```bash
 rm -rf /tmp/claude-code-hooks
+```
+
+## Quick Decision Tree
+
+To help users choose the right path:
+
+```
+Q: Do you already have claude-code-hooks cloned locally?
+├─ YES  → Use your local path in step 2, skip step 1
+└─ NO   → Clone it in step 1
+
+Q: Do you want OpenRouter credit monitoring in statusline?
+├─ YES  → Also do step 4b (requires claude-hud plugin)
+│        └─ Check: Is claude-hud installed?
+│           ├─ YES → Run setup-statusline.sh or /claude-hud:setup
+│           └─ NO  → First install: /plugin marketplace add → /plugin install → /claude-hud:setup
+└─ NO   → Skip step 4b entirely
+
+Q: Is this Windows (Git Bash)?
+├─ YES  → Remember bash prefixes in step 4
+└─ NO   → Direct execution works fine
 ```
 
 ## Module Selection
