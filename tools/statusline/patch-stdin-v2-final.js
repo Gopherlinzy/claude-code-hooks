@@ -99,6 +99,13 @@ function applyPatch(stdinJsFile) {
         const normalizedBedrockLabel = normalizeBedrockModelLabel(modelId);
         if (normalizedBedrockLabel) return normalizedBedrockLabel;
 
+        // OpenRouter format: vendor/actual-model (e.g. anthropic/claude-sonnet-4-5, z-ai/glm-5.1)
+        if (modelId.includes('/')) {
+            const actualModel = modelId.split('/').slice(1).join('/');
+            const improved = normalizeClaudeModelLabel(actualModel);
+            return improved || actualModel;
+        }
+
         const improved = normalizeClaudeModelLabel(modelId);
         if (improved) return improved;
 
@@ -132,17 +139,26 @@ function normalizeClaudeModelLabel(modelName) {
     if (!modelName) return null;
     const norm = modelName.toLowerCase().trim();
 
-    // Format 1: claude-{family}-{version}  (model.id style)
-    // e.g. claude-sonnet-4, claude-haiku-4.5, claude-opus-4-1, claude-sonnet-4-20250514
-    let match = norm.match(/claude-([a-z]+)-(.*)/);
+    // Format 1a: claude-{family}-{version}  e.g. claude-sonnet-4, claude-haiku-4.5
+    let match = norm.match(/claude-(haiku|sonnet|opus)-(.*)/);
     if (match) {
         const family = match[1];
-        let version = match[2].replace(/-\\d{8}$/, ''); // Remove date suffix like -20250514
+        let version = match[2].replace(/-\\d{8}$/, '');
         const parts = version.split(/[-.]/).filter(Boolean);
         if (parts.length > 0) {
             const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
             return 'Claude ' + familyCapital + ' ' + parts[0] + '.' + (parts[1] || '0');
         }
+    }
+
+    // Format 1b: claude-{version}-{family}  e.g. claude-3-haiku, claude-3-5-sonnet
+    match = norm.match(/claude-(\\d+)(?:[.-](\\d+))?-(haiku|sonnet|opus)/);
+    if (match) {
+        const major = match[1];
+        const minor = match[2] || '0';
+        const family = match[3];
+        const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
+        return 'Claude ' + familyCapital + ' ' + major + '.' + minor;
     }
 
     // Format 2: {Family} {Major}[.{Minor}] [(context)]  (display_name style)
