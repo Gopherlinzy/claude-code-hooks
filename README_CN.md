@@ -85,7 +85,66 @@ ls "${HOME}/.claude/plugins/cache/claude-hud/"
 
 ## 极速上手
 
-### 一行命令，零售后
+### 🤖 方案 0：让 Claude Code 自动安装（零 CLI 知识要求）
+
+**适合：** 谁都行，特别是不想碰命令行的人  
+**耗时：** ~3 分钟  
+**难度：** ⭐（就是在 Claude Code 里打字）
+
+Clone 仓库，在 Claude Code 中打开，让它读安装指南。Claude 会搞定所有步骤，还会问你需要什么。
+
+```bash
+# 第 1 步 — Clone（二选一）
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git ~/projects/claude-code-hooks
+
+# 🇨🇳 GitHub 太慢？
+git clone https://ghfast.top/https://github.com/Gopherlinzy/claude-code-hooks.git ~/projects/claude-code-hooks
+
+# 第 2 步 — 在 Claude Code 中打开项目
+cd ~/projects/claude-code-hooks
+claude
+```
+
+然后就这样告诉 Claude，比如：
+
+```
+Please read CLAUDE.md and install claude-code-hooks for me.
+I use Feishu for notifications. My webhook URL is https://...
+```
+
+Claude 会：
+1. 读 `CLAUDE.md`（这个仓库里的人工智能可读安装指南）
+2. 把脚本复制到正确的位置
+3. 问你想用哪个通知后端
+4. 把 hook 合并到 `~/.claude/settings.json`
+5. 验证一切正常
+
+> **Note：** `CLAUDE.md` 是机器可读的安装指南 — 它描述每一步，这样 Claude Code 可以代表你执行完整安装。
+
+---
+
+### 选择你的安装路线
+
+不同的安装方式，适合不同的人：
+
+#### 🚀 方案 A：一行命令，无后顾之忧（推荐）
+
+**适合：** 大多数用户，包括 Windows Git Bash  
+**耗时：** ~2 分钟  
+**难度：** ⭐  
+
+一行命令搞定一切。安装器负责环境检查、脚本安装、模块选择、Hook 注册和通知配置。
+
+**优点：**
+- ✅ 完全自动化，带交互式 TUI
+- ✅ 出错自动回滚
+- ✅ 内置模块选择
+- ✅ 原生支持 Windows Git Bash
+- ✅ 一行命令，完全自动
+
+**缺点：**
+- ❌ 对安装内容的控制较少
+- ❌ 需要用 pipe to bash（但完全可审计）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
@@ -95,6 +154,91 @@ curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/
 > ```bash
 > curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/install.sh | bash
 > ```
+
+安装器替你搞定一切：
+
+```
+[1/6] 环境检查     ← bash、node、python3、curl，齐了没？
+[2/6] 安装脚本     ← 拉仓库 → 复制 → 加权限。完事。
+[3/6] 模块选择     ← 带复选框的 TUI！很酷对吧。
+[4/6] 注入配置     ← 深度合并到 settings.json，你原来的 hooks 不会被覆盖。
+[5/6] 通知设置     ← 飞书、Slack、Telegram、Bark、Discord……选你喜欢的。
+[6/6] 安装验证     ← 全绿通过，否则自动回滚。
+```
+
+```
+  ↑↓ 移动  ␣ 选择  a 全选/全不选  Enter 确认
+
+  ❯ [✔] 任务完成通知      因为沉默不是金
+    [✔] 安全门（Bash）     因为 rm -rf / 永远不是正确答案
+    [✔] 大文件拦截         因为 bundle.min.js 不是轻松读物
+    [✔] 等待超时提醒       因为 Claude 太有礼貌了不会冲你喊
+    [✔] 取消等待           因为你回来了，好人类
+```
+
+#### 🛠️ 方案 B：一步一步手工安装（我想要完全控制）
+
+**适合：** 高级用户、CI/CD 集成、自定义部署  
+**耗时：** ~10 分钟  
+**难度：** ⭐⭐  
+
+Clone 仓库，然后手工运行每一步。完全控制文件放在哪、怎么配置，以及启用哪些模块。
+
+**优点：**
+- ✅ 完全控制 — 自己决定什么放在哪里
+- ✅ 易于集成到 CI/CD 流程
+- ✅ 每一步都可以先审计再执行
+- ✅ 完美适配气隙环境（提前下载）
+- ✅ Windows Git Bash 完美支持
+
+**缺点：**
+- ❌ 要手工执行 6 个步骤而不是 1 条命令
+- ❌ 出错需要手工修复
+- ❌ 需要一些 bash 知识
+
+**[→ 详见下方「手工安装」章节](#手工安装-我想要完全控制)**
+
+#### 📦 方案 C：完全离线（气隙系统）
+
+**适合：** 离线开发、气隙 CI/CD、隔离网络  
+**耗时：** ~15 分钟（主要是下载等待）  
+**难度：** ⭐⭐  
+
+在有网的机器上提前下载，然后转移到没网的系统。除了下载步骤，其他和方案 B 完全一样。
+
+**优点：**
+- ✅ 完全离线（初始下载后）
+- ✅ 和方案 B 的控制力一样
+- ✅ 目标机器上无网络调用
+- ✅ 便于审计
+
+**缺点：**
+- ❌ 需要两台机器（一台有网）
+- ❌ 需要手工转移文件
+- ❌ 和方案 B 一样要 6 个步骤
+
+**关键差异：** 在有网的机器上下载，然后通过 U 盘、scp 等方式转移到离线机器。
+
+**[→ 详见下方「完全离线」章节](#完全离线气隙系统)**
+
+### 方案对比
+
+| 方面 | 方案 0 | 方案 A | 方案 B | 方案 C |
+|------|--------|--------|--------|--------|
+| **耗时** | ~3 分钟 | ~2 分钟 | ~10 分钟 | ~15 分钟 |
+| **难度** | ⭐ | ⭐ | ⭐⭐ | ⭐⭐ |
+| **怎么做** | 和 Claude 聊天 | 一行 curl 命令 | 手工多个步骤 | 提前下载然后手工 |
+| **可控性** | Claude 选择 | 低 | 高 | 高 |
+| **出错恢复** | Claude 处理 | 自动回滚 | 手工修复 | 手工修复 |
+| **需要网络** | 安装时 | 安装时 | 安装时 | 不需要（预下载） |
+| **最适合** | 非 CLI 用户 | 普通用户 | 高级用户、CI/CD | 气隙环境 |
+| **Windows Git Bash** | ✅ | ✅ | ✅ 推荐 | ✅ |
+| **依赖检查** | Claude 检查 | 自动 | 手工 | 手工 |
+| **模块选择** | 和 Claude 聊 | TUI | 手工编辑 | 手工编辑 |
+
+---
+
+### 一行命令，零售后
 
 安装器替你搞定一切：
 
@@ -128,7 +272,276 @@ curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/
 ./install.sh --uninstall --purge  # 核弹选项
 ```
 
-### 手动安装（"我不信 curl | bash"）
+### 手工安装（我想要完全控制）
+
+这是**方案 B** 的详细版本。按照下面 6 个步骤完全掌控安装。
+
+#### 步骤 1：Clone 仓库
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git /tmp/claude-code-hooks
+cd /tmp/claude-code-hooks
+```
+
+> 🇨🇳 **国内或 GitHub 太慢？**
+> ```bash
+> git clone https://ghfast.top/https://github.com/Gopherlinzy/claude-code-hooks.git /tmp/claude-code-hooks
+> cd /tmp/claude-code-hooks
+> ```
+
+#### 步骤 2：复制脚本
+
+创建安装目录并复制所有脚本：
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+mkdir -p "${INSTALL_DIR}"
+
+# 复制主 Hook 脚本
+cp scripts/*.sh "${INSTALL_DIR}/"
+chmod +x "${INSTALL_DIR}"/*.sh
+
+# 复制状态栏工具（可选，OpenRouter 信用额度监控）
+mkdir -p "${INSTALL_DIR}/statusline"
+cp tools/statusline/*.sh "${INSTALL_DIR}/statusline/"
+chmod +x "${INSTALL_DIR}/statusline"/*.sh
+
+# 复制工具脚本（为了未来更新）
+cp tools/merge-hooks.js "${INSTALL_DIR}/"
+cp tools/select-modules.js "${INSTALL_DIR}/"
+```
+
+**Windows (Git Bash) 注意：** 上面的路径在 Git Bash 中本身就可用，无需特殊处理。
+
+#### 步骤 3：创建 notify.conf
+
+选择你的通知后端并配置：
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+cat > "${INSTALL_DIR}/notify.conf" << 'EOF'
+CC_NOTIFY_BACKEND=auto
+CC_WAIT_NOTIFY_SECONDS=30
+
+# 取消注释并配置你要用的后端：
+# NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+# CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+# CC_BARK_URL=https://api.day.app/YOUR_KEY
+# CC_TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+# CC_TELEGRAM_CHAT_ID=987654321
+# CC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+EOF
+```
+
+**对于敏感凭证**（含 Token 的 Webhook URL），把它们放在 `~/.cchooks/secrets.env` 里，而不是 `notify.conf`：
+
+```bash
+mkdir -p "${HOME}/.cchooks"
+cat > "${HOME}/.cchooks/secrets.env" << 'EOF'
+NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+CC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+EOF
+chmod 600 "${HOME}/.cchooks/secrets.env"
+```
+
+#### 步骤 4：合并 Hook 到 settings.json
+
+这一步把所有 Hook 注册到 Claude Code 设置文件（保留已有的 Hook）
+
+**macOS / Linux / WSL2：**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" \
+  <(node -e "
+const fs = require('fs');
+const dir = '${INSTALL_DIR}'.replace(/'/g, '');
+const cmd = (script) => dir + '/' + script;
+const hooks = {
+  hooks: {
+    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] },
+      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] }
+    ],
+    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }],
+    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
+  }
+};
+fs.writeFileSync('/dev/stdout', JSON.stringify(hooks, null, 2));
+") \
+  "${SETTINGS}"
+```
+
+**Windows (Git Bash)：**
+
+Windows 需要给所有 Hook 命令加 `bash ` 前缀：
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+node -e "
+const fs = require('fs');
+const dir = '${INSTALL_DIR}'.replace(/'/g, '');
+const prefix = 'bash ';
+const cmd = (script) => prefix + dir + '/' + script;
+const hooks = {
+  hooks: {
+    Stop: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cc-stop-hook.sh'), timeout: 15 }] }],
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: cmd('cc-safety-gate.sh'), timeout: 5 }] },
+      { matcher: 'Read|Edit|Write', hooks: [{ type: 'command', command: cmd('guard-large-files.sh'), timeout: 5 }] }
+    ],
+    PermissionRequest: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    Notification: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('wait-notify.sh'), timeout: 5 }] }],
+    PostToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }],
+    UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: cmd('cancel-wait.sh'), timeout: 3 }] }]
+  }
+};
+fs.writeFileSync('/tmp/hooks-patch.json', JSON.stringify(hooks, null, 2));
+" && node "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" /tmp/hooks-patch.json "${SETTINGS}"
+rm -f /tmp/hooks-patch.json
+```
+
+#### 步骤 5：（可选）配置状态栏 OpenRouter 信用监控
+
+如果你想在 claude-hud 状态栏显示实时 OpenRouter 信用额度：
+
+**macOS / Linux / WSL2：**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud/"*/ 2>/dev/null | \
+    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
+    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
+    tail -1 | cut -f2-)
+
+if [ -z "$PLUGIN_DIR" ]; then
+    echo "⚠️  claude-hud 插件未找到 — 状态栏配置跳过"
+else
+    node -e "
+const fs = require('fs');
+const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
+settings.statusLine = {
+    command: 'bash -c \"plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"bash ${INSTALL_DIR}/statusline/openrouter-status.sh\\\"\"',
+    type: 'command'
+};
+fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
+" && echo "✅ 状态栏已配置"
+fi
+```
+
+**Windows (Git Bash)：**
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud/"*/ 2>/dev/null | \
+    awk -F/ '{ print $(NF-1) "\t" $(0) }' | \
+    sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | \
+    tail -1 | cut -f2-)
+
+if [ -z "$PLUGIN_DIR" ]; then
+    echo "⚠️  claude-hud 插件未找到 — 状态栏配置跳过"
+else
+    node -e "
+const fs = require('fs');
+const settings = JSON.parse(fs.readFileSync('${SETTINGS}', 'utf8'));
+settings.statusLine = {
+    command: 'bash -c \"plugin_dir=${PLUGIN_DIR}; exec node \\\${plugin_dir}dist/index.js --extra-cmd \\\"bash ${INSTALL_DIR}/statusline/openrouter-status.sh\\\"\"',
+    type: 'command'
+};
+fs.writeFileSync('${SETTINGS}', JSON.stringify(settings, null, 2) + '\\n');
+" && echo "✅ 状态栏已配置"
+fi
+```
+
+#### 步骤 6：验证安装
+
+运行这些检查确保一切配置正确：
+
+```bash
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+# 检查所有脚本都可执行
+echo "=== 检查 Hook 脚本 ==="
+for f in "${INSTALL_DIR}"/*.sh; do
+    if bash -n "$f" 2>/dev/null; then
+        echo "✅ $(basename "$f")"
+    else
+        echo "❌ $(basename "$f") — 语法错误"
+    fi
+done
+
+# 检查 settings.json 是有效的 JSON
+echo "=== 检查 settings.json ==="
+if python3 -c "import json; json.load(open('${SETTINGS}'))" 2>/dev/null; then
+    echo "✅ settings.json 是有效的 JSON"
+else
+    echo "❌ settings.json 无效"
+fi
+
+# 测试通知（如果已配置）
+echo "=== 测试通知 ==="
+if "${INSTALL_DIR}/send-notification.sh" "Claude Code Hooks 测试消息 🦞"; then
+    echo "✅ 通知已发送"
+else
+    echo "⚠️  通知后端尚未配置"
+fi
+```
+
+**如果有检查失败，** 参考 [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) 获得解决方案。
+
+---
+
+### 完全离线（气隙系统）
+
+这是**方案 C** 的详细版本。在目标系统无网络访问的情况下使用此方法。
+
+#### 步骤 0：在有网的机器上准备
+
+在有网络的机器上：
+
+```bash
+# Clone 仓库
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+
+# 可选：压缩便于转移（如果空间有限）
+tar czf claude-code-hooks.tar.gz claude-code-hooks/
+```
+
+通过 U 盘、scp 或其他方式把 `claude-code-hooks/` 目录（或压缩文件）转移到离线机器。
+
+#### 步骤 1-6：和方案 B 完全一样
+
+一旦你在离线机器上有了 `claude-code-hooks/` 目录，按照**方案 B 的步骤 1-6** 完全相同地做：
+
+1. ✅ Clone → 跳过（已经有目录了）
+2. ✅ 复制脚本
+3. ✅ 创建 notify.conf
+4. ✅ 合并 Hook 到 settings.json
+5. ✅ （可选）配置状态栏
+6. ✅ 验证安装
+
+**唯一的差异：** 在步骤 1 不需要 Clone，因为你已经有文件了。只需导航到 `claude-code-hooks/` 目录，然后从步骤 2 开始：
+
+```bash
+# 而不是：git clone https://github.com/.../claude-code-hooks.git /tmp/claude-code-hooks
+# 你已经有了，所以只需：
+cd /path/to/claude-code-hooks
+# 然后继续步骤 2（复制脚本）及之后的步骤
+```
+
+---
+
+### DIY 安装（我不信 curl | bash）
 
 敬你是条好汉。
 
@@ -137,7 +550,8 @@ git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 cd claude-code-hooks && ./install.sh
 ```
 
-纯手工，不用安装器：
+或者完全手工，不用安装器：
+
 ```bash
 git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 mkdir -p ~/.claude/scripts/claude-hooks
@@ -146,27 +560,39 @@ chmod +x ~/.claude/scripts/claude-hooks/*.sh
 # 然后手动编辑 ~/.claude/settings.json — 参考下方「Hook 注册」
 ```
 
+---
+
 ## 平台支持
 
-| 平台 | 状态 | 备注 |
-|------|------|------|
-| 🍎 **macOS** | ✅ 完美 | 需要 bash 4.0+（`brew install bash`，macOS 自带 3.2 太老了） |
-| 🐧 **Linux** | ✅ 完美 | `apt install bash curl python3 jq` 然后一键安装 |
-| 🪟 **WSL2** | ✅ 完美 | 本质上就是 Linux，只是多了几步安装 |
-| 🪟 **Git Bash** | ⚠️ 能用 | 通知和安全门没问题，后台定时器不太靠谱 |
-| 🪟 **PowerShell** | ❌ 不行 | 用 WSL2。认真的。 |
+| 平台 | 状态 | 安装方式 | 备注 | 已知问题 |
+|------|------|--------|------|--------|
+| 🍎 **macOS** | ✅ 完美 | `./install.sh` | 需要 bash 4.0+（`brew install bash`，macOS 自带 3.2 太老了） | 无 |
+| 🐧 **Linux** | ✅ 完美 | `./install.sh` | `apt install bash curl python3 jq` | 无 |
+| 🪟 **WSL2** | ✅ 完美 | `./install.sh`（Linux 模式） | 插件缓存在 WSL Linux 主目录，不在 Windows | 无 |
+| 🪟 **Git Bash** | ✅ Hook + ⚠️ 状态栏 | `./install.sh` 或手工 | Hook ✅ 可用；状态栏有[已知问题](docs/TROUBLESHOOTING.md#windows-git-bash-specific) | [见 Git Bash 问题](docs/TROUBLESHOOTING.md#windows-git-bash-specific) |
+| 🪟 **PowerShell / cmd** | ❌ 不行 | 用 WSL2 | 不支持 — Hook 脚本只能用 bash | 使用 [Windows 子系统](https://learn.microsoft.com/zh-cn/windows/wsl/) |
 
-### v1.0.1 新增：跨平台兼容层
+**关键差异：**
 
-`platform-shim.sh` 提供了 8 个跨平台函数替换，所有 hook 自动加载 —— 你不需要配任何东西：
+- **macOS/Linux：** 完整支持，开箱即用
+- **WSL2：** 完整支持，用 Linux 命令（插件缓存要在 WSL 文件系统）
+- **Git Bash：** Hook ✅ 可用，状态栏配置有已知路径转义问题（v1.0.1）。[见解决方案](docs/TROUBLESHOOTING.md#windows-git-bash-specific)
+- **PowerShell：** 不支持。Windows 开发用 WSL2。
+
+> **Windows 用户：** 大多数问题都和路径有关，[已在 TROUBLESHOOTING 中记录](docs/TROUBLESHOOTING.md#windows-git-bash-specific)。安装失败? [查看 Windows 故障排查章节](docs/TROUBLESHOOTING.md#installation-failures)。
+
+### v1.0.1 新增：跨平台兼容层与安全加固
+
+`platform-shim.sh` 提供了 8 个跨平台函数替换。所有 Hook 脚本自动使用这些函数 —— 你无需配置任何东西。
 
 ```bash
+# 这些函数在所有平台都可用：
 _date_iso          # date -Iseconds（MSYS2 上炸了）→ 自动降级 python3
 _kill_check $PID   # kill -0（Git Bash 没有）→ tasklist 兼容
-_ps_command_of $PID  # ps -p ... -o command=（同上）→ wmic 兼容
-_stat_mtime $FILE  # stat -f/-c（macOS vs Linux）→ 自动检测
+_ps_command_of $PID  # ps -p PID -o command=（同上）→ wmic 兼容
+_stat_mtime $FILE  # stat -f %m / stat -c %Y（macOS vs Linux）
 _env_clean cmd     # env -i（Windows 没有）→ 手动清理环境
-_sleep_frac 0.05   # sleep 0.05（MSYS2 不支持小数）→ 降级 sleep 1
+_sleep_frac 0.05   # Fractional sleep（MSYS2 不支持小数）
 ```
 
 ## 装完之后：配置通知

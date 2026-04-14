@@ -2,6 +2,123 @@
 
 为 claude-hud 状态栏增强实时 API 信用额度监控和自定义指标。
 
+## 🔧 claude-hud 显示补丁
+
+修复 claude-hud 默认显示中的两个 Bug：
+
+| 修复前 | 修复后 |
+|--------|--------|
+| `[sonnet 4]` | `[Claude Sonnet 4.6 \| Claude API]` |
+| `[Claude Haiku 4.0]` | `[Claude Haiku 4.5 \| OpenRouter]` |
+| `[Unknown]` | `[glm-5.1 \| z-ai]` |
+
+**修复内容：**
+- Model 版本被截断（4.6 显示成 4 或 4.0）
+- Provider 不显示（OpenRouter、Claude API、自定义 base URL）
+- 非 Claude 模型（glm、gpt、llama…）无法识别
+- OpenRouter `vendor/model` 格式（`anthropic/claude-sonnet-4-5`）无法解析
+
+### 安装补丁
+
+**第 1 步 — 下载补丁脚本**
+
+```bash
+mkdir -p ~/.claude/scripts/claude-hooks/statusline
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/tools/statusline/patch-stdin-v2-final.js \
+  -o ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js
+chmod +x ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js
+```
+
+> 🇨🇳 **GitHub 太慢？** 用镜像：
+> ```bash
+> curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/tools/statusline/patch-stdin-v2-final.js \
+>   -o ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js
+> ```
+
+**第 2 步 — 应用补丁**
+
+```bash
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --apply
+```
+
+预期输出：
+```
+✅ getModelName() patched
+✅ getProviderLabel() patched
+✅ Patch v2 applied!
+```
+
+**第 3 步 — 重启 Claude Code**
+
+补丁在重启时生效。
+
+### 其他补丁命令
+
+```bash
+# 检查补丁是否已应用
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --status
+
+# 回滚到原始版本
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --revert
+```
+
+### Provider 识别原理
+
+补丁读取 `ANTHROPIC_BASE_URL` 环境变量来识别真实 Provider：
+
+| `ANTHROPIC_BASE_URL` | 显示的 Provider |
+|---|---|
+| `api.anthropic.com`（或未设置） | `Claude API` |
+| `openrouter.ai/…` | `OpenRouter` |
+| `api.z-ai.com/…` | `z-ai` |
+| `api.aihubmix.com/…` | `aihubmix` |
+| AWS Bedrock 模型 ID | `Bedrock` |
+
+对于 OpenRouter，`vendor/model` 格式被正确识别：
+
+| `ANTHROPIC_MODEL` | 显示为 |
+|---|---|
+| `anthropic/claude-sonnet-4-5` | `Claude Sonnet 4.5 \| OpenRouter` |
+| `z-ai/glm-5.1` | `glm-5.1 \| OpenRouter` |
+| `meta-llama/llama-3.3-70b-instruct` | `llama-3.3-70b-instruct \| OpenRouter` |
+
+### settings.json — statusLine 命令
+
+安装 claude-hud（`/plugin install claude-hud`）和运行配置（`/claude-hud:setup`）后，你的 `~/.claude/settings.json` 中应该有 `statusLine` 块。如果没有，或你想手工配置：
+
+```bash
+# 自动生成你的系统对应的正确命令
+~/.claude/scripts/claude-hooks/setup-statusline.sh
+```
+
+或者把这个模板复制粘贴到 `~/.claude/settings.json`（替换 `NODE_PATH` 和 `PLUGIN_DIR`）：
+
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec node \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "type": "command"
+  }
+}
+```
+
+> **Windows (Git Bash)：** 在 `node` 前加 `bash -c 'node …'` 并用正斜杠。`setup-statusline.sh` 脚本会自动处理。
+
+#### 已应用补丁、不需要 OpenRouter 密钥
+
+如果你只想要 Model + Provider 标签，不需要 OpenRouter 信用额度，可以完全省去 `--extra-cmd`：
+
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec node \"${plugin_dir}dist/index.js\"'",
+    "type": "command"
+  }
+}
+```
+
+补丁已经修复了 claude-hud 内部的显示 — 不需要额外脚本。
+
 ## 可用工具
 
 ### OpenRouter 信用额度监控
