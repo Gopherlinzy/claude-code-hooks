@@ -2,6 +2,20 @@
 
 Enhance your Claude Code statusline with real-time API credit monitoring and custom metrics.
 
+## 🔧 StatusLine Display Issues? Apply the Patch!
+
+If you see incorrect model names or missing provider info, apply the included patch:
+
+```bash
+# One-command fix
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-inline.js --apply
+```
+
+**Before:** `[sonnet 4]` (incomplete model, no provider)  
+**After:** `[Claude Sonnet 4.0 | OpenRouter]` (complete info)
+
+👉 See [PATCH_GUIDE.md](PATCH_GUIDE.md) for details.
+
 ## Available Tools
 
 ### OpenRouter Credit Monitor
