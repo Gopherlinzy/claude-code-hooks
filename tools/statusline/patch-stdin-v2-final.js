@@ -92,7 +92,7 @@ function applyPatch(stdinJsFile) {
 
     const newGetModelName = `export function getModelName(stdin) {
     // PATCH v2: from env or improved parsing
-    // Priority: model.id (standard) > display_name (may contain extra info) > env > raw
+    // Priority: model.id > display_name > env
 
     const modelId = stdin.model?.id?.trim();
     if (modelId) {
@@ -101,13 +101,16 @@ function applyPatch(stdinJsFile) {
 
         const improved = normalizeClaudeModelLabel(modelId);
         if (improved) return improved;
+
+        // Non-claude model ID (e.g. glm-5.1, gpt-4, gemini-pro)
+        return modelId;
     }
 
     const displayName = stdin.model?.display_name?.trim();
     if (displayName) {
         const improved = normalizeClaudeModelLabel(displayName);
         if (improved) return improved;
-        // Strip context suffix like "(1M context)" before returning
+        // Strip context suffix like "(1M context)" before returning raw
         return displayName.replace(/\\s*\\([^)]+\\)\\s*$/, '').trim() || displayName;
     }
 
@@ -121,7 +124,7 @@ function applyPatch(stdinJsFile) {
         return improved || envModel;
     }
 
-    return modelId || 'Unknown';
+    return 'Unknown';
 }
 
 // PATCH v2: better version parsing - handles 4.5, 4-5, 4.6 and display_name formats
@@ -153,6 +156,7 @@ function normalizeClaudeModelLabel(modelName) {
         return 'Claude ' + familyCapital + ' ' + major + '.' + minor;
     }
 
+    // Not a known Claude format
     return null;
 }`;
 
@@ -168,21 +172,47 @@ function normalizeClaudeModelLabel(modelName) {
     }
 
     const newGetProviderLabel = `export function getProviderLabel(stdin) {
-    // PATCH v2: with env fallback
+    // PATCH v2: ANTHROPIC_BASE_URL-aware provider detection
     const modelId = stdin.model?.id?.trim() ||
                     process.env.ANTHROPIC_MODEL ||
                     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL;
-    if (!modelId) return null;
 
-    if (isBedrockModelId(modelId)) {
+    // Bedrock: based on model ID format
+    if (modelId && isBedrockModelId(modelId)) {
         return 'Bedrock';
     }
 
-    if (modelId.includes('openrouter') || /^[a-z-]+\\//.test(modelId)) {
+    // OpenRouter: model.id contains slash like "openrouter/anthropic/claude-3"
+    if (modelId && (modelId.includes('openrouter') || /^[a-z-]+\\//.test(modelId))) {
         return 'OpenRouter';
     }
 
-    if (modelId.startsWith('claude-') && !modelId.includes('/')) {
+    // Custom provider: extract from ANTHROPIC_BASE_URL hostname
+    const baseUrl = process.env.ANTHROPIC_BASE_URL;
+    if (baseUrl) {
+        try {
+            const host = new URL(baseUrl).hostname; // e.g. "api.z-ai.com"
+            // Skip standard Anthropic API (no need to label it)
+            if (host === 'api.anthropic.com') {
+                return modelId && modelId.startsWith('claude-') ? 'Claude API' : null;
+            }
+            // Known providers
+            if (host.includes('openrouter')) return 'OpenRouter';
+            if (host.includes('azure')) return 'Azure';
+            if (host.includes('vertex')) return 'Vertex';
+            if (host.includes('bedrock')) return 'Bedrock';
+            // Extract meaningful name from hostname
+            // api.z-ai.com -> z-ai | z-ai.api.com -> z-ai | aihubmix.com -> aihubmix
+            const parts = host.split('.');
+            const skipPrefixes = ['api', 'sdk', 'gateway', 'proxy', 'llm', 'chat'];
+            const startIdx = skipPrefixes.includes(parts[0]) ? 1 : 0;
+            // Take the "meaningful" part before the TLD
+            return parts.slice(startIdx, parts.length - 1).join('.') || host;
+        } catch (e) { /* invalid URL, fall through */ }
+    }
+
+    // Claude API (no custom base URL, standard claude-* model)
+    if (modelId && modelId.startsWith('claude-') && !modelId.includes('/')) {
         return 'Claude API';
     }
 
