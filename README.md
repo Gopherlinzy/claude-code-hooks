@@ -117,6 +117,44 @@ If you want to configure manually, see [tools/statusline/README.md](tools/status
 
 ## Quick Start
 
+### 🤖 Path 0: Let Claude Code Install It For You (Zero CLI Knowledge Required)
+
+**Best for:** Anyone who prefers to just describe what they want instead of running shell commands  
+**Time:** ~3 minutes  
+**Difficulty:** ⭐ (just type in Claude Code)
+
+Clone the repo, open it in Claude Code, and ask it to read the install guide. Claude will run every step and ask you what you need.
+
+```bash
+# Step 1 — clone (pick one)
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git ~/projects/claude-code-hooks
+
+# 🇨🇳 GitHub slow?
+git clone https://ghfast.top/https://github.com/Gopherlinzy/claude-code-hooks.git ~/projects/claude-code-hooks
+
+# Step 2 — open the project in Claude Code
+cd ~/projects/claude-code-hooks
+claude
+```
+
+Then just tell Claude what you want, for example:
+
+```
+Please read CLAUDE.md and install claude-code-hooks for me.
+I use Feishu for notifications. My webhook URL is https://...
+```
+
+Claude will:
+1. Read `CLAUDE.md` (the AI-readable install guide in this repo)
+2. Copy scripts to the right place
+3. Ask you which notification backend you want
+4. Patch `~/.claude/settings.json` with the correct hooks
+5. Verify everything works
+
+> **Note:** `CLAUDE.md` is a machine-readable install guide — it describes every step so Claude Code can execute the full installation on your behalf.
+
+---
+
 ### Choose Your Path
 
 Not all installations are created equal. Pick the one that fits your style:
@@ -203,17 +241,18 @@ Pre-download on a machine with internet, then transfer to the offline system. Id
 
 ### Path Comparison
 
-| Aspect | Path A | Path B | Path C |
-|--------|--------|--------|--------|
-| **Time** | ~2 min | ~10 min | ~15 min |
-| **Difficulty** | ⭐ | ⭐⭐ | ⭐⭐ |
-| **Control** | Low | High | High |
-| **Error recovery** | Automatic | Manual | Manual |
-| **Internet required** | During | During | No (if pre-downloaded) |
-| **Best for** | Most users | Power users, CI/CD | Air-gapped |
-| **Windows Git Bash** | ✅ | ✅ Recommended | ✅ |
-| **Dependencies check** | Automatic | Manual | Manual |
-| **Module selection** | TUI | Manual editing | Manual editing |
+| Aspect | Path 0 | Path A | Path B | Path C |
+|--------|--------|--------|--------|--------|
+| **Time** | ~3 min | ~2 min | ~10 min | ~15 min |
+| **Difficulty** | ⭐ | ⭐ | ⭐⭐ | ⭐⭐ |
+| **How** | Chat with Claude | One curl command | Manual steps | Pre-download then manual |
+| **Control** | Claude decides | Low | High | High |
+| **Error recovery** | Claude handles it | Automatic | Manual | Manual |
+| **Internet required** | During | During | During | No (if pre-downloaded) |
+| **Best for** | Non-CLI users | Most users | Power users, CI/CD | Air-gapped |
+| **Windows Git Bash** | ✅ | ✅ | ✅ Recommended | ✅ |
+| **Dependencies check** | Claude checks | Automatic | Manual | Manual |
+| **Module selection** | Ask Claude | TUI | Manual editing | Manual editing |
 
 ---
 

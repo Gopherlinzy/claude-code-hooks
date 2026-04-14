@@ -2,19 +2,118 @@
 
 Enhance your Claude Code statusline with real-time API credit monitoring and custom metrics.
 
-## 🔧 StatusLine Display Issues? Apply the Patch!
+## 🔧 claude-hud Display Patch
 
-If you see incorrect model names or missing provider info, apply the included patch:
+Fixes two bugs in claude-hud's default model/provider display:
+
+| Before | After |
+|--------|-------|
+| `[sonnet 4]` | `[Claude Sonnet 4.6 \| Claude API]` |
+| `[Claude Haiku 4.0]` | `[Claude Haiku 4.5 \| OpenRouter]` |
+| `[Unknown]` | `[glm-5.1 \| z-ai]` |
+
+**What it fixes:**
+- Model version truncated (4.6 shown as 4 or 4.0)
+- Provider not shown (OpenRouter, Claude API, custom base URL)
+- Non-Claude models (glm, gpt, llama…) not recognized
+- OpenRouter `vendor/model` format (`anthropic/claude-sonnet-4-5`) not parsed
+
+### Install the patch
+
+**Step 1 — Copy the patch script**
 
 ```bash
-# One-command fix
-node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-inline.js --apply
+mkdir -p ~/.claude/scripts/claude-hooks/statusline
+curl -fsSL https://raw.githubusercontent.com/Gopherlinzy/claude-code-hooks/main/tools/statusline/patch-stdin-v2-final.js \
+  -o ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js
+chmod +x ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js
 ```
 
-**Before:** `[sonnet 4]` (incomplete model, no provider)  
-**After:** `[Claude Sonnet 4.0 | OpenRouter]` (complete info)
+> 🇨🇳 **GitHub slow?** Replace `raw.githubusercontent.com/Gopherlinzy` with `ghfast.top/https://raw.githubusercontent.com/Gopherlinzy`
 
-👉 See [PATCH_GUIDE.md](PATCH_GUIDE.md) for details.
+**Step 2 — Apply**
+
+```bash
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --apply
+```
+
+Expected output:
+```
+✅ getModelName() patched
+✅ getProviderLabel() patched
+✅ Patch v2 applied!
+```
+
+**Step 3 — Restart Claude Code**
+
+The patch takes effect on next launch.
+
+### Other patch commands
+
+```bash
+# Check whether patch is applied
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --status
+
+# Roll back to original
+node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --revert
+```
+
+### How provider detection works
+
+The patch reads `ANTHROPIC_BASE_URL` to identify the actual provider:
+
+| `ANTHROPIC_BASE_URL` | Provider shown |
+|---|---|
+| `api.anthropic.com` (or not set) | `Claude API` |
+| `openrouter.ai/…` | `OpenRouter` |
+| `api.z-ai.com/…` | `z-ai` |
+| `api.aihubmix.com/…` | `aihubmix` |
+| AWS Bedrock model ID | `Bedrock` |
+
+For OpenRouter, the `vendor/model` format is understood:
+
+| `ANTHROPIC_MODEL` | Displayed as |
+|---|---|
+| `anthropic/claude-sonnet-4-5` | `Claude Sonnet 4.5 \| OpenRouter` |
+| `z-ai/glm-5.1` | `glm-5.1 \| OpenRouter` |
+| `meta-llama/llama-3.3-70b-instruct` | `llama-3.3-70b-instruct \| OpenRouter` |
+
+### settings.json — statusLine command
+
+After installing claude-hud (`/plugin install claude-hud`) and running setup (`/claude-hud:setup`), your `~/.claude/settings.json` should contain a `statusLine` block. If it doesn't, or you want to configure it manually:
+
+```bash
+# Auto-generate the correct command for your system
+~/.claude/scripts/claude-hooks/setup-statusline.sh
+```
+
+Or paste this template into `~/.claude/settings.json` (replacing `NODE_PATH` and `PLUGIN_DIR`):
+
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec node \"${plugin_dir}dist/index.js\" --extra-cmd \"bash ~/.claude/scripts/claude-hooks/statusline/openrouter-status.sh\"'",
+    "type": "command"
+  }
+}
+```
+
+> **Windows (Git Bash):** prefix `node` with `bash -c 'node …'` and use forward slashes. The `setup-statusline.sh` script handles this automatically.
+
+#### With patch applied, no OpenRouter key needed
+
+If you only want model + provider labels and don't use OpenRouter credits, you can omit `--extra-cmd` entirely:
+
+```json
+{
+  "statusLine": {
+    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec node \"${plugin_dir}dist/index.js\"'",
+    "type": "command"
+  }
+}
+```
+
+The patch fixes the display inside claude-hud itself — no extra script required.
 
 ## Available Tools
 
