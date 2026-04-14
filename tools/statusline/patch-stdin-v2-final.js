@@ -92,53 +92,68 @@ function applyPatch(stdinJsFile) {
 
     const newGetModelName = `export function getModelName(stdin) {
     // PATCH v2: from env or improved parsing
+    // Priority: model.id (standard) > display_name (may contain extra info) > env > raw
+
+    const modelId = stdin.model?.id?.trim();
+    if (modelId) {
+        const normalizedBedrockLabel = normalizeBedrockModelLabel(modelId);
+        if (normalizedBedrockLabel) return normalizedBedrockLabel;
+
+        const improved = normalizeClaudeModelLabel(modelId);
+        if (improved) return improved;
+    }
+
     const displayName = stdin.model?.display_name?.trim();
     if (displayName) {
         const improved = normalizeClaudeModelLabel(displayName);
         if (improved) return improved;
-        return displayName;
+        // Strip context suffix like "(1M context)" before returning
+        return displayName.replace(/\\s*\\([^)]+\\)\\s*$/, '').trim() || displayName;
     }
-    const modelId = stdin.model?.id?.trim();
-    if (!modelId) {
-        // Fallback to env
-        const envModel = process.env.ANTHROPIC_MODEL ||
-                         process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-                         process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ||
-                         process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
-        if (envModel) {
-            const improved = normalizeClaudeModelLabel(envModel);
-            return improved || envModel;
-        }
-        return 'Unknown';
-    }
-    const normalizedBedrockLabel = normalizeBedrockModelLabel(modelId);
-    if (normalizedBedrockLabel) return normalizedBedrockLabel;
 
-    const improved = normalizeClaudeModelLabel(modelId);
-    return improved || modelId;
+    // Fallback to env
+    const envModel = process.env.ANTHROPIC_MODEL ||
+                     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
+                     process.env.ANTHROPIC_DEFAULT_OPUS_MODEL ||
+                     process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+    if (envModel) {
+        const improved = normalizeClaudeModelLabel(envModel);
+        return improved || envModel;
+    }
+
+    return modelId || 'Unknown';
 }
 
-// PATCH v2: better version parsing - handles 4.5, 4-5, 4.6 formats
+// PATCH v2: better version parsing - handles 4.5, 4-5, 4.6 and display_name formats
 function normalizeClaudeModelLabel(modelName) {
     if (!modelName) return null;
     const norm = modelName.toLowerCase().trim();
 
-    // Match: claude-{family}-{version}
-    const match = norm.match(/claude-([a-z]+)-([\\d.]+)/);
-    if (!match) return null;
+    // Format 1: claude-{family}-{version}  (model.id style)
+    // e.g. claude-sonnet-4, claude-haiku-4.5, claude-opus-4-1, claude-sonnet-4-20250514
+    let match = norm.match(/claude-([a-z]+)-(.*)/);
+    if (match) {
+        const family = match[1];
+        let version = match[2].replace(/-\\d{8}$/, ''); // Remove date suffix like -20250514
+        const parts = version.split(/[-.]/).filter(Boolean);
+        if (parts.length > 0) {
+            const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
+            return 'Claude ' + familyCapital + ' ' + parts[0] + '.' + (parts[1] || '0');
+        }
+    }
 
-    const family = match[1];
-    let version = match[2].replace(/-\\d{8}$/, ''); // Remove date suffix
+    // Format 2: {Family} {Major}[.{Minor}] [(context)]  (display_name style)
+    // e.g. "Sonnet 4 (1M context)", "Haiku 4.5", "Opus 4.1"
+    match = norm.match(/^(haiku|sonnet|opus)\\s+(\\d+)(?:\\.(\\d+))?/);
+    if (match) {
+        const family = match[1];
+        const major = match[2];
+        const minor = match[3] || '0';
+        const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
+        return 'Claude ' + familyCapital + ' ' + major + '.' + minor;
+    }
 
-    // Split by dots or hyphens, filter empty
-    const parts = version.split(/[-.]/).filter(Boolean);
-    if (parts.length === 0) return null;
-
-    const major = parts[0];
-    const minor = parts[1] || '0';
-    const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
-
-    return 'Claude ' + familyCapital + ' ' + major + '.' + minor;
+    return null;
 }`;
 
     content = content.substring(0, getModelNameRange.startIdx) + newGetModelName + content.substring(getModelNameRange.endIdx);
