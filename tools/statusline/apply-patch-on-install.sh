@@ -12,7 +12,7 @@
 should_patch_claude_hud() {
     local install_dir="$1"
 
-    if [[ ! -f "$install_dir/patch-stdin-inline.js" ]]; then
+    if [[ ! -f "$install_dir/patch-stdin-v2-final.js" ]]; then
         return 1  # 补丁脚本不存在
     fi
 
@@ -48,7 +48,7 @@ should_patch_claude_hud() {
 # 应用补丁
 apply_claude_hud_patch() {
     local install_dir="$1"
-    local patch_script="$install_dir/patch-stdin-inline.js"
+    local patch_script="$install_dir/patch-stdin-v2-final.js"
 
     if [[ ! -f "$patch_script" ]]; then
         echo "⚠️  Patch script not found: $patch_script"
@@ -65,7 +65,7 @@ apply_claude_hud_patch() {
         echo "💡 Remember to restart Claude Code to see the changes"
     else
         echo ""
-        echo "❌ Patch failed. Check:  node $patch_script --status"
+        echo "❌ Patch failed. Check: node $patch_script --status"
     fi
 }
 

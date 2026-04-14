@@ -137,13 +137,14 @@ function applyPatch(stdinJsFile) {
 // PATCH v2: better version parsing - handles 4.5, 4-5, 4.6 and display_name formats
 function normalizeClaudeModelLabel(modelName) {
     if (!modelName) return null;
-    const norm = modelName.toLowerCase().trim();
+    // Strip ANSI escape artifacts (e.g. [1m] or [1m] left over from \x1b[1m bold code)
+    const norm = modelName.replace(/\[[0-9;]*m\]?/g, '').toLowerCase().trim();
 
     // Format 1a: claude-{family}-{version}  e.g. claude-sonnet-4, claude-haiku-4.5
     let match = norm.match(/claude-(haiku|sonnet|opus)-(.*)/);
     if (match) {
         const family = match[1];
-        let version = match[2].replace(/-\\d{8}$/, '');
+        let version = match[2].replace(/-\\d{8}$/, '').replace(/\\[.*$/, '');
         const parts = version.split(/[-.]/).filter(Boolean);
         if (parts.length > 0) {
             const familyCapital = family.charAt(0).toUpperCase() + family.slice(1);
