@@ -24,3 +24,23 @@ PLAN.md
 # Personal Git multi-account configuration (do not commit)
 .git-multi-account
 .git-setup-guide.md
+
+# IDE configurations (should not be version controlled)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.o
+*.a
+
+# Node dependencies
+node_modules/
+.claude/
