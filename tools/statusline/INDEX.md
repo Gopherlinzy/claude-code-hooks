@@ -214,8 +214,8 @@ tools/statusline/
 ├── ADDING_FEATURES.md                ← 详细教程
 ├── README.md                          ← OpenRouter (EN)
 ├── README_CN.md                       ← OpenRouter (CN)
-├── openrouter-status.sh               ← 已有工具
-├── patch-stdin-v2-final.js            ← 补丁工具
+├── openrouter-status.sh               ← OpenRouter 费用追踪（generation API，按会话统计）
+├── openrouter-balance.sh              ← OpenRouter 余额查询（/api/v1/key，进度条显示）
 ├── examples/
 │   ├── README.md                      ← 示例工具说明
 │   ├── example-github-status.sh       ← GitHub 用户信息
