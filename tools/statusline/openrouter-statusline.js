@@ -171,10 +171,14 @@ async function tryGetSessionData() {
             const currentModel = getCurrentModel();
             let providerModel;
             if (currentModel?.model_id) {
-                providerModel = formatModelLabel(currentModel.model_id);
+                // 模型名用实时的，provider 仍从 generation 缓存取
+                const modelLabel = formatModelLabel(currentModel.model_id);
+                providerModel = state.last_provider
+                    ? `${state.last_provider}: ${modelLabel}`
+                    : modelLabel;
             }
             else if (state.last_provider && state.last_model) {
-                // 降级：使用缓存里的模型（可能是切换前的旧值）
+                // 降级：两者都用缓存（切换模型后下一次 generation 才更新）
                 const model = formatModelLabel(state.last_model);
                 providerModel = `${state.last_provider}: ${model}`;
             }
