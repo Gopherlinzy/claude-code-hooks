@@ -160,30 +160,14 @@ async function main() {
     else if (balance) {
         output = `💰 ${balance}`;
     }
-    // 检查是否运行在 --extra-cmd 模式（通过 OUTPUT_FORMAT 环境变量）
-    const outputFormat = process.env.OUTPUT_FORMAT || "json";
-    if (outputFormat === "text" || process.env.CLAUDE_HUD_EXTRA_CMD === "1") {
-        // --extra-cmd 模式：输出纯文本
-        if (output) {
-            console.log(output);
-        }
+    // 始终输出 JSON（--extra-cmd 需要 JSON 格式）
+    if (output) {
+        console.log(JSON.stringify({ label: output }));
     }
     else {
-        // statusLine 命令模式：输出 JSON
-        if (output) {
-            console.log(JSON.stringify({ label: output }));
-        }
-        else {
-            console.log(JSON.stringify({ label: "⚙️ Loading..." }));
-        }
+        console.log(JSON.stringify({ label: "💰 Loading..." }));
     }
 }
 main().catch(() => {
-    const outputFormat = process.env.OUTPUT_FORMAT || "json";
-    if (outputFormat === "text" || process.env.CLAUDE_HUD_EXTRA_CMD === "1") {
-        // 纯文本模式下不输出错误
-    }
-    else {
-        console.log(JSON.stringify({ label: "⚙️ Error" }));
-    }
+    console.log(JSON.stringify({ label: "💰 Error" }));
 });
