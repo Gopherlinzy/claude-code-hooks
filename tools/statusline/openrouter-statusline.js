@@ -115,25 +115,42 @@ async function getSessionCostFromFile(sessionId) {
     return null;
 }
 async function tryGetSessionData() {
-    // 尝试从最近的 Claude Code 会话获取数据
-    // 这是 --extra-cmd 模式的备选方案
+    // 尝试从最近的缓存文件获取会话数据
     try {
-        const claudeDir = path.join(process.env.HOME || "", ".claude", "projects");
-        if (!fs.existsSync(claudeDir))
-            return null;
-        // 获取最近修改的会话文件夹
-        const projects = fs.readdirSync(claudeDir);
-        let latestSession = { time: 0, id: "" };
-        for (const proj of projects) {
-            const projPath = path.join(claudeDir, proj);
-            const stat = fs.statSync(projPath);
-            if (stat.mtimeMs > latestSession.time) {
-                latestSession = { time: stat.mtimeMs, id: proj };
+        const { execSync } = require("child_process");
+        // 尝试多个 TMPDIR 位置
+        const possibleTmpdirs = [
+            process.env.TMPDIR,
+            process.env.TMP,
+            process.env.TEMP,
+            "/tmp",
+            "/var/tmp",
+        ].filter(Boolean);
+        let latestFile = null;
+        let latestTime = 0;
+        for (const tmpdir of possibleTmpdirs) {
+            try {
+                const files = execSync(`find ${tmpdir} -maxdepth 1 -name 'claude-openrouter-cost-*.json' -type f 2>/dev/null | head -50`, {
+                    encoding: "utf-8",
+                }).trim().split("\n").filter((f) => f);
+                for (const file of files) {
+                    const stat = fs.statSync(file);
+                    if (stat.mtimeMs > latestTime) {
+                        latestTime = stat.mtimeMs;
+                        latestFile = file;
+                    }
+                }
             }
+            catch (e) { }
         }
-        if (latestSession.id) {
-            const sessionCost = await getSessionCostFromFile(latestSession.id);
-            return { sessionId: latestSession.id, sessionCost };
+        if (!latestFile || !fs.existsSync(latestFile))
+            return null;
+        const state = JSON.parse(fs.readFileSync(latestFile, "utf-8"));
+        if (state.last_provider && state.last_model) {
+            let model = state.last_model.split("/").pop() || state.last_model;
+            model = model.replace(/-\d+$/, "");
+            const sessionCost = `${state.last_provider}: ${model} - $${state.total_cost.toFixed(2)} | `;
+            return { sessionCost };
         }
     }
     catch (e) { }
