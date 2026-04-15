@@ -498,3 +498,274 @@ echo "✅ 更新完成"
 | OpenRouter 状态栏 | StatusLine | OFF | 需手动按本文配置 |
 
 禁用某模块：在第 4 步生成 hooks-patch.json 时删掉对应的 event，或用 `/claude-hud:setup` 界面操作。
+
+---
+
+## Windows Git Bash 完整指南
+
+### 特殊注意事项
+
+Windows 上使用 Git Bash 需要额外的配置。本指南针对 **Windows 10/11 + Git for Windows + Node.js**。
+
+#### 前置条件
+
+```bash
+# 验证必要的工具
+which git bash node curl
+# 都应该返回路径，如: /usr/bin/bash, /c/Program Files/nodejs/node.exe
+```
+
+#### Windows 特定问题
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `bash: scripts/*.sh: command not found` | 脚本执行权限 | Git Bash 自动处理，无需 chmod |
+| 路径包含反斜杠导致错误 | Windows 路径格式 | 脚本已使用正斜杠处理 |
+| `OPENROUTER_API_KEY` 未生效 | 环境变量配置位置 | 编辑 `~/.bashrc` 或 `~/.zshrc` |
+| statusline 显示乱码 | 编码问题 | 确保 `.bashrc` 含 `export LANG=en_US.UTF-8` |
+
+#### Windows 快速安装
+
+**Step 1: 在 Git Bash 中运行安装脚本**
+
+```bash
+cd /tmp  # 或任意临时目录
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+cd claude-code-hooks
+bash install.sh
+```
+
+安装脚本会自动检测 Windows 平台并添加 `bash` 前缀。
+
+**Step 2: 配置 API Key**
+
+编辑 `~/.bashrc`（通常在 `C:\Users\你的用户名\.bashrc`）：
+
+```bash
+# 在末尾添加
+export OPENROUTER_API_KEY="sk-or-v1-..."
+export LANG=en_US.UTF-8
+```
+
+然后重启 Git Bash 使配置生效：
+
+```bash
+source ~/.bashrc
+echo $OPENROUTER_API_KEY  # 验证
+```
+
+**Step 3: 验证安装**
+
+运行诊断脚本：
+
+```bash
+bash ~/projects/claude-code-hooks/tools/diagnose-windows.sh
+```
+
+这会检查：
+- Node.js、bash、curl 可用性
+- settings.json 和 hooks 配置
+- OpenRouter API Key 环境变量
+- statusline 脚本运行状态
+
+### Windows 常见错误
+
+#### 错误 1: `Settings file not found`
+
+**症状**: 安装完成但 hooks 没有生效
+
+**诊断**:
+```bash
+cat ~/.claude/settings.json | grep -c "hooks"
+# 返回 0 表示 hooks 未写入
+```
+
+**解决**:
+```bash
+# 重新生成和写入 hooks
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+SETTINGS="${HOME}/.claude/settings.json"
+
+# 检查目录是否存在
+ls -la "$INSTALL_DIR"/*.sh
+
+# 手动合并（使用 Python）
+python3 "${INSTALL_DIR}/merge-hooks.js" "${SETTINGS}" patch.json "${SETTINGS}"
+```
+
+#### 错误 2: `OpenRouter statusline not showing`
+
+**症状**: 状态栏不显示余额信息
+
+**诊断**:
+```bash
+# 测试脚本单独运行
+node ~/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js
+
+# 应该输出: {"label":"💰 ..."}
+```
+
+**常见原因**:
+
+1. **API Key 未设置**
+   ```bash
+   echo $OPENROUTER_API_KEY
+   # 空结果表示未配置
+   ```
+
+2. **claude-hud 未安装或未配置**
+   ```bash
+   ls ~/.claude/plugins/cache/claude-hud/
+   # 如果无输出，运行 /plugin install claude-hud
+   ```
+
+3. **statusline command 配置错误**
+   ```bash
+   grep statusLine ~/.claude/settings.json
+   # 检查 command 字段是否包含正确的路径
+   ```
+
+**解决**:
+
+```bash
+# 完整的 statusline 配置命令
+python3 << 'PYEOF'
+import json, os, subprocess
+
+settings_file = os.path.expanduser('~/.claude/settings.json')
+plugin_dir_cmd = "ls -d ~/.claude/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1"
+plugin_dir = subprocess.check_output(plugin_dir_cmd, shell=True, text=True).strip()
+
+if not plugin_dir:
+    print("❌ claude-hud 未安装")
+    exit(1)
+
+statusline_script = os.path.expanduser('~/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js')
+command = f"bash -c 'exec node \"{plugin_dir}dist/index.js\" --extra-cmd \"node {statusline_script}\"'"
+
+with open(settings_file) as f:
+    settings = json.load(f)
+
+settings['statusLine'] = {'type': 'command', 'command': command}
+
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+
+print("✅ statusLine 配置已更新")
+PYEOF
+```
+
+然后重启 Claude Code。
+
+#### 错误 3: `Network timeout`
+
+**症状**: 状态栏多次出现 "timeout" 或无响应
+
+**诊断**:
+```bash
+# 测试到 OpenRouter 的网络连接
+curl -I https://openrouter.ai/api/v1/key \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+**解决**:
+
+1. **检查防火墙/代理**
+   ```bash
+   # 如果使用代理，添加到 ~/.bashrc
+   export http_proxy=http://proxy.company.com:8080
+   export https_proxy=http://proxy.company.com:8080
+   ```
+
+2. **增加超时时间**
+   编辑 `~/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js`，找到：
+   ```javascript
+   fetchWithTimeout(..., 2000)  // 2秒
+   ```
+   改为：
+   ```javascript
+   fetchWithTimeout(..., 5000)  // 5秒
+   ```
+
+### Windows 诊断流程
+
+如果安装后仍有问题，按以下顺序诊断：
+
+**1. 环境检查**
+```bash
+bash tools/diagnose-windows.sh
+```
+
+**2. 手动路径检查**
+```bash
+# 检查安装目录
+echo "INSTALL_DIR: $HOME/.claude/scripts/claude-hooks"
+ls ~/.claude/scripts/claude-hooks/*.sh | wc -l
+
+# 检查 settings.json
+echo "SETTINGS: $HOME/.claude/settings.json"
+python3 -c "import json; json.load(open('~/.claude/settings.json')); print('✅ Valid')" || echo "❌ Invalid JSON"
+```
+
+**3. 手动测试各个组件**
+```bash
+# 测试 notification
+~/.claude/scripts/claude-hooks/send-notification.sh "Test message"
+
+# 测试 safety gate
+bash ~/.claude/scripts/claude-hooks/cc-safety-gate.sh "rm -rf /"
+
+# 测试 statusline
+node ~/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js
+```
+
+**4. 查看 Claude Code 日志**
+```bash
+# Claude Code 日志位置（Windows）
+cat ~/.claude/logs/claude-code.log | tail -50
+```
+
+### Windows 卸载
+
+要完全卸载：
+
+```bash
+# 移除脚本
+rm -rf ~/.claude/scripts/claude-hooks
+
+# 移除 hooks 配置（手动编辑 settings.json 删除 "hooks" 字段）
+python3 << 'PYEOF'
+import json, os
+settings_file = os.path.expanduser('~/.claude/settings.json')
+with open(settings_file) as f:
+    settings = json.load(f)
+if 'hooks' in settings:
+    del settings['hooks']
+with open(settings_file, 'w') as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+print("✅ Hooks 已移除")
+PYEOF
+
+# 重启 Claude Code
+```
+
+---
+
+## 故障排除总览
+
+### 快速检查清单
+
+- [ ] Node.js 已安装: `node --version`
+- [ ] 脚本存在: `ls ~/.claude/scripts/claude-hooks/*.sh | wc -l` → 应 ≥ 13
+- [ ] settings.json 有效: `python3 -c "import json; json.load(open('~/.claude/settings.json'))"`
+- [ ] hooks 已注册: `grep -c "hooks" ~/.claude/settings.json` → ≥ 1
+- [ ] API Key 已配置: `echo $OPENROUTER_API_KEY | wc -c` → > 10
+- [ ] Claude Code 已重启（让新配置生效）
+
+### 获取帮助
+
+- **GitHub Issues**: https://github.com/Gopherlinzy/claude-code-hooks/issues
+- **项目 Wiki**: https://github.com/Gopherlinzy/claude-code-hooks/wiki
+- **诊断脚本**: `bash tools/diagnose-windows.sh`（包含详细输出）
