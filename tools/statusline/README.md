@@ -101,52 +101,75 @@ Changes take effect on next launch.
 
 ## ⚙️ Source Code Modification
 
-### Why Modify claude-hud?
+Two patches to claude-hud are required for full functionality.
 
-By default, claude-hud's `--extra-cmd` truncates output to 50 characters, making it impossible to display full session cost + balance info. The solution is to increase this limit.
+### Patch 1: Remove Output Length Limit (`extra-cmd.js`)
 
-### How to Modify
-
-**Find your claude-hud installation:**
+By default, `--extra-cmd` truncates output at **50 characters**. One-liner fix:
 
 ```bash
-# Locate the dist directory
-ls -d ~/.claude/plugins/cache/claude-hud/claude-hud/*/dist/
-```
+PLUGIN_DIR=$(ls -d ~/.claude/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1)
 
-**Edit the extra-cmd.js file:**
+# macOS
+sed -i '' 's/const MAX_LABEL_LENGTH = 50/const MAX_LABEL_LENGTH = 999/' \
+  "${PLUGIN_DIR}dist/extra-cmd.js"
 
-```bash
-# Open in your editor
-nano ~/.claude/plugins/cache/claude-hud/claude-hud/0.0.11/dist/extra-cmd.js
-```
+# Linux
+sed -i 's/const MAX_LABEL_LENGTH = 50/const MAX_LABEL_LENGTH = 999/' \
+  "${PLUGIN_DIR}dist/extra-cmd.js"
 
-**Find line 5 and change:**
-
-```javascript
-// BEFORE:
-const MAX_LABEL_LENGTH = 50;
-
-// AFTER:
-const MAX_LABEL_LENGTH = 999;
-```
-
-This allows the full OpenRouter info to display without truncation.
-
-**Verify the change:**
-
-```bash
-grep "MAX_LABEL_LENGTH" ~/.claude/plugins/cache/claude-hud/claude-hud/0.0.11/dist/extra-cmd.js
+# Verify
+grep "MAX_LABEL_LENGTH" "${PLUGIN_DIR}dist/extra-cmd.js"
 # Should show: const MAX_LABEL_LENGTH = 999;
 ```
 
-### Alternative: Patch Script
+### Patch 2: Write Current Model to Tmp File (`index.js`)
 
-If you have the patch-stdin-v2-final.js script:
+This enables `/model` switching to immediately update the model name in statusline.
+claude-hud has stdin data (with current model) but `--extra-cmd` can't access it.
+This patch writes the current model to `/tmp/claude-hud-current-model.json` before calling extra-cmd.
 
 ```bash
-node ~/.claude/scripts/claude-hooks/statusline/patch-stdin-v2-final.js --apply
+node - << 'PATCH_EOF'
+const fs = require('fs'), os = require('os'), path = require('path');
+const dir = path.join(os.homedir(), '.claude/plugins/cache/claude-hud/claude-hud');
+const ver = fs.readdirSync(dir).filter(f => !f.startsWith('.')).sort().pop();
+const file = path.join(dir, ver, 'dist/index.js');
+let content = fs.readFileSync(file, 'utf-8');
+const MARKER = '        const extraCmd = deps.parseExtraCmdArg();';
+const PATCH = `        // 把当前模型写入临时文件，让 extra-cmd 实时感知 /model 切换
+        try {
+            const { writeFileSync } = await import('node:fs');
+            const { join } = await import('node:path');
+            const { tmpdir } = await import('node:os');
+            writeFileSync(join(tmpdir(), 'claude-hud-current-model.json'), JSON.stringify({
+                model_id: stdin.model?.id ?? '',
+                display_name: stdin.model?.display_name ?? '',
+                updated_at: Date.now(),
+            }));
+        } catch (_) {}
+`;
+if (content.includes('claude-hud-current-model')) {
+  console.log('✅ already patched, skipping');
+  process.exit(0);
+}
+if (!content.includes(MARKER)) {
+  console.error('❌ insert marker not found — claude-hud version may have changed');
+  process.exit(1);
+}
+fs.writeFileSync(file, content.replace(MARKER, PATCH + MARKER));
+console.log('✅ index.js patched');
+PATCH_EOF
 ```
+
+Verify:
+```bash
+PLUGIN_DIR=$(ls -d ~/.claude/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1)
+grep -c "claude-hud-current-model" "${PLUGIN_DIR}dist/index.js" \
+  && echo "✅ patch applied" || echo "❌ patch missing"
+```
+
+> **After claude-hud upgrades:** Both patches must be re-applied, as the plugin update overwrites the dist files.
 
 ## 📝 Configuration Details
 

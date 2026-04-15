@@ -135,97 +135,91 @@ rm -f "$PATCH_FILE"
 
 ### 4b. Configure StatusLine for OpenRouter Monitoring (Optional)
 
-If the user wants real-time OpenRouter credit monitoring in their statusline:
+Full instructions in [INSTALL.md](INSTALL.md#openrouter-状态栏详细配置). Summary for agent use:
 
-**Prerequisites: Install and configure claude-hud plugin first**
-
-1. Add claude-hud to the plugin marketplace:
+**Step 1 — Install claude-hud plugin:**
 ```bash
+# Run inside Claude Code session:
 /plugin marketplace add jarrodwatts/claude-hud
-```
-
-2. Install the claude-hud plugin:
-```bash
 /plugin install claude-hud
-```
-
-3. Configure claude-hud (auto-setup):
-```bash
 /claude-hud:setup
 ```
 
-**Then configure OpenRouter credit monitoring**
-
-Once claude-hud is installed, use the recommended method:
-
+**Step 2 — Copy statusline script:**
 ```bash
-/claude-hud:setup
+INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
+mkdir -p "${INSTALL_DIR}/statusline"
+cp ~/projects/claude-code-hooks/tools/statusline/openrouter-statusline.js \
+   "${INSTALL_DIR}/statusline/"
 ```
 
-Or run the setup tool:
+**Step 3 — Patch claude-hud source (two changes required):**
+
+Patch 1: Remove 50-char output limit in extra-cmd.js:
 ```bash
-~/.claude/scripts/claude-hooks/setup-statusline.sh
+PLUGIN_DIR=$(ls -d ~/.claude/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1)
+sed -i '' 's/const MAX_LABEL_LENGTH = 50/const MAX_LABEL_LENGTH = 999/' \
+  "${PLUGIN_DIR}dist/extra-cmd.js"
+# Linux: sed -i (no '' argument)
 ```
 
-This automatically:
-- Detects your platform (Windows/macOS/Linux)
-- Finds the installed claude-hud plugin
-- Generates correct command paths for openrouter-status.sh
-- Updates settings.json safely
-
-**Check: Is claude-hud installed?**
-
+Patch 2: Write current model to tmp file before running extra-cmd (enables /model switching):
 ```bash
-# Verify claude-hud is installed before proceeding
-if [ ! -d "${HOME}/.claude/plugins/cache/claude-hud" ]; then
-    echo "❌ claude-hud not found. Install it first:"
-    echo "  /plugin marketplace add jarrodwatts/claude-hud"
-    echo "  /plugin install claude-hud"
-    echo "  /claude-hud:setup"
-    exit 1
-fi
-echo "✅ claude-hud found"
+node - << 'PATCH_EOF'
+const fs = require('fs'), os = require('os'), path = require('path');
+const dir = path.join(os.homedir(), '.claude/plugins/cache/claude-hud/claude-hud');
+const ver = fs.readdirSync(dir).sort().pop();
+const file = path.join(dir, ver, 'dist/index.js');
+let content = fs.readFileSync(file, 'utf-8');
+const MARKER = '        const extraCmd = deps.parseExtraCmdArg();';
+const PATCH = `        try {
+            const { writeFileSync } = await import('node:fs');
+            const { join } = await import('node:path');
+            const { tmpdir } = await import('node:os');
+            writeFileSync(join(tmpdir(), 'claude-hud-current-model.json'), JSON.stringify({
+                model_id: stdin.model?.id ?? '',
+                display_name: stdin.model?.display_name ?? '',
+                updated_at: Date.now(),
+            }));
+        } catch (_) {}
+`;
+if (content.includes('claude-hud-current-model')) { console.log('already patched'); process.exit(0); }
+if (!content.includes(MARKER)) { console.error('marker not found'); process.exit(1); }
+fs.writeFileSync(file, content.replace(MARKER, PATCH + MARKER));
+console.log('patched');
+PATCH_EOF
 ```
 
-**Alternative: Manual setup** (if automated setup unavailable)
-
+**Step 4 — Set statusLine in settings.json:**
 ```bash
 SETTINGS="${HOME}/.claude/settings.json"
-INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
-
-# Find claude-hud plugin directory
-PLUGIN_DIR=$(ls -d "${HOME}/.claude/plugins/cache/claude-hud/claude-hud"/*/ 2>/dev/null | sort -V | tail -1)
-
-if [ -z "$PLUGIN_DIR" ]; then
-    echo "❌ claude-hud plugin not found. Please install it first:"
-    echo "  /plugin marketplace add jarrodwatts/claude-hud"
-    echo "  /plugin install claude-hud"
-    echo "  /claude-hud:setup"
-    exit 1
-fi
-
-# Platform detection
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) 
-        CMD="bash ${INSTALL_DIR}/statusline/openrouter-status.sh" 
-        ;;
-    *)
-        CMD="${INSTALL_DIR}/statusline/openrouter-status.sh"
-        ;;
-esac
-
-# Save to settings.json (simple jq command)
-jq ".statusLine = {
-    command: \"bash -c 'plugin_dir=${PLUGIN_DIR}; exec node \${plugin_dir}dist/index.js --extra-cmd \\\"${CMD}\\\"'\",
-    type: \"command\"
-}" "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
-
-echo "✅ StatusLine configured"
+SCRIPT="${HOME}/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js"
+python3 -c "
+import json, os
+p = os.path.expanduser('${SETTINGS}')
+d = json.load(open(p))
+d['statusLine'] = {'type':'command','command':\"bash -c 'plugin_dir=\$(ls -d \\\"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\\\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1) && exec node \\\"\${plugin_dir}dist/index.js\\\" --extra-cmd \\\"node ${SCRIPT}\\\"'\"}
+open(p,'w').write(json.dumps(d,indent=2,ensure_ascii=False)+'\n')
+print('done')
+"
 ```
 
-**Platform notes:**
-- **Windows (Git Bash/MSYS)**: Commands use `bash` prefix; paths converted to forward slashes
-- **macOS/Linux**: Direct execution; no prefix needed
+**Step 5 — Hide duplicate model label in claude-hud:**
+```bash
+python3 -c "
+import json, os
+p = os.path.expanduser('~/.claude/plugins/claude-hud/config.json')
+d = json.load(open(p))
+d.setdefault('display',{})['showModel'] = False
+open(p,'w').write(json.dumps(d,indent=2,ensure_ascii=False)+'\n')
+print('done')
+"
+```
+
+Restart Claude Code for all changes to take effect. Expected statusline:
+```
+claude-sonnet-4-5 - $4.78 | 💰 334.83/500 ▓▓▓▓▓▓▓░░░ 67%
+```
 
 ### 5. Verify
 
