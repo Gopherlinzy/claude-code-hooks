@@ -2,7 +2,7 @@
 
 /**
  * OpenRouter StatusLine - 三合一方案
- * 功能：余额 + 模型 + 成本追踪
+ * 功能：成本 + 余额 + 百分比（无模型前缀）
  *
  * 编译：npx tsc openrouter-combined.ts --target es2020 --module commonjs --outDir .
  * 运行：node openrouter-combined.js < /dev/stdin
@@ -59,7 +59,7 @@ async function fetchWithCurl(
   });
 }
 
-async function getBalance(): Promise<string | null> {
+async function getBalance(): Promise<{ amount: string; percentage: number } | null> {
   try {
     const resp = await fetchWithCurl("https://openrouter.ai/api/v1/key", {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
@@ -72,7 +72,11 @@ async function getBalance(): Promise<string | null> {
     const limit = data.data?.limit || 0;
 
     if (limit > 0) {
-      return `${remaining.toFixed(0)}/${limit.toFixed(0)}`;
+      const percentage = Math.round((remaining / limit) * 100);
+      return {
+        amount: `${remaining.toFixed(2)}/${limit.toFixed(0)}`,
+        percentage,
+      };
     }
   } catch (e) {}
   return null;
@@ -143,8 +147,8 @@ async function getSessionCost(stdinStr: string): Promise<string | null> {
     // 返回格式化输出
     if (state.last_provider && state.last_model) {
       let model = state.last_model.split("/").pop() || state.last_model;
-      model = model.replace(/-\d+$/, ""); // 去掉版本号
-      return `${state.last_provider}: ${model} - $${state.total_cost.toFixed(4)} - cache: $${state.total_cache_discount.toFixed(2)}`;
+      model = model.replace(/-\d+$/, "");
+      return `${state.last_provider}: ${model} - $${state.total_cost.toFixed(2)}`;
     }
   } catch (e) {}
   return null;
@@ -165,31 +169,22 @@ async function main() {
   const balance = await getBalance();
   const session = stdinData ? await getSessionCost(stdinStr) : null;
 
-  // 组建输出（优化长度）
+  // 组建输出
   let parts: string[] = [];
 
-  // 优先添加模型信息（从 stdin）
-  if (stdinData?.model?.display_name) {
-    parts.push(`[${stdinData.model.display_name}]`);
-  }
-
-  // 添加会话成本（简化格式）
+  // 添加会话成本（不添加模型前缀）
   if (session) {
-    // 简化成本显示：只保留 Provider 和 cost，去掉 cache 折扣
-    const shortSession = session
-      .replace(/ - cache: \$[\d.]+/g, "") // 去掉 cache 部分
-      .substring(0, 40); // 限制长度
-    parts.push(shortSession);
+    parts.push(session);
   }
 
-  // 添加余额
+  // 添加余额（含百分比和两位小数）
   if (balance) {
-    parts.push(`💰 ${balance}`);
+    parts.push(`💰 ${balance.amount} ${balance.percentage}%`);
   }
 
   const output = parts.join(" | ");
 
-  // 始终输出 JSON 格式
+  // 输出 JSON
   if (output) {
     console.log(JSON.stringify({ label: output }));
   } else {
