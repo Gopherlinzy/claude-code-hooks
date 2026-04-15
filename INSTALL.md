@@ -316,24 +316,33 @@ grep -c "claude-hud-current-model" "${PLUGIN_DIR}dist/index.js" \
 
 ### 配置 settings.json statusLine
 
-将以下配置写入 `~/.claude/settings.json` 的 `statusLine` 字段：
+> **Windows 用户注意**：`--extra-cmd` 在 Windows 上由 `cmd.exe` 执行，不认识 Git Bash 的 MSYS 路径（`/c/Users/...`）。
+> 必须使用 Windows 原生格式（`C:/Users/...`）。  
+> 推荐使用 `run-hud.sh` 自动处理路径转换，**macOS/Linux/Windows 通用**。
+
+#### 推荐方式（跨平台，使用 run-hud.sh）
+
+**Step 1 — 复制 run-hud.sh**
 
 ```bash
-SETTINGS="${HOME}/.claude/settings.json"
-STATUSLINE_SCRIPT="${HOME}/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js"
+mkdir -p ~/.claude/scripts/claude-hooks/statusline
+cp ~/projects/claude-code-hooks/tools/statusline/run-hud.sh \
+   ~/.claude/scripts/claude-hooks/statusline/
+chmod +x ~/.claude/scripts/claude-hooks/statusline/run-hud.sh
+```
 
-# 生成 statusLine command（自动找到已安装的 claude-hud 版本）
-STATUSLINE_CMD="bash -c 'plugin_dir=\$(ls -d \"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1) && exec node \"\${plugin_dir}dist/index.js\" --extra-cmd \"node ${STATUSLINE_SCRIPT}\"'"
+**Step 2 — 写入 settings.json**
 
-# 写入 settings.json（使用 python3，避免 jq 依赖）
-python3 - << PYEOF
+```bash
+python3 - << 'PYEOF'
 import json, os
-settings_path = os.path.expanduser('${SETTINGS}')
+settings_path = os.path.expanduser('~/.claude/settings.json')
+run_hud = os.path.expanduser('~/.claude/scripts/claude-hooks/statusline/run-hud.sh')
 with open(settings_path) as f:
     settings = json.load(f)
 settings['statusLine'] = {
     'type': 'command',
-    'command': '''${STATUSLINE_CMD}'''
+    'command': f'bash "{run_hud}"'
 }
 with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2, ensure_ascii=False)
@@ -342,16 +351,30 @@ print('✅ statusLine 写入完成')
 PYEOF
 ```
 
-**或者手动编辑 `~/.claude/settings.json`，加入：**
+或手动编辑 `~/.claude/settings.json`：
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash -c 'plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1) && exec node \"${plugin_dir}dist/index.js\" --extra-cmd \"node ~/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js\"'"
+    "command": "bash \"C:/Users/你的用户名/.claude/scripts/claude-hooks/statusline/run-hud.sh\""
   }
 }
 ```
+
+> **为什么用 run-hud.sh？**  
+> `run-hud.sh` 自动检测平台，在 Windows 上将 `/c/Users/你的用户名/...` 转换为 `C:/Users/你的用户名/...`，
+> 使 `cmd.exe` 可以识别 `--extra-cmd` 的路径。macOS/Linux 上直接运行，无额外开销。
+
+#### Windows 路径问题说明
+
+| 格式 | 示例 | cmd.exe 能识别 |
+|------|------|:---:|
+| MSYS 路径 | `/c/Users/sunluyi/.claude/...` | ❌ |
+| Windows 原生路径 | `C:/Users/sunluyi/.claude/...` | ✅ |
+| 反斜杠路径 | `C:\Users\sunluyi\.claude\...` | ✅（但 bash 中需转义）|
+
+`run-hud.sh` 内部使用 `sed 's|^/\([a-zA-Z]\)/|\U\1:/|'` 自动完成转换，无需手动修改。
 
 ### 隐藏默认模型标签
 
