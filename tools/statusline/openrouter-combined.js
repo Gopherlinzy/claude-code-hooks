@@ -155,21 +155,25 @@ async function main() {
     catch { }
     const balance = await getBalance();
     const session = stdinData ? await getSessionCost(stdinStr) : null;
-    // 组建输出
+    // 组建输出（优化长度）
     let parts = [];
     // 优先添加模型信息（从 stdin）
     if (stdinData?.model?.display_name) {
-        parts.push(`[${stdinData.model.display_name} | OpenRouter]`);
+        parts.push(`[${stdinData.model.display_name}]`);
     }
-    // 添加会话成本
+    // 添加会话成本（简化格式）
     if (session) {
-        parts.push(session);
+        // 简化成本显示：只保留 Provider 和 cost，去掉 cache 折扣
+        const shortSession = session
+            .replace(/ - cache: \$[\d.]+/g, "") // 去掉 cache 部分
+            .substring(0, 40); // 限制长度
+        parts.push(shortSession);
     }
     // 添加余额
     if (balance) {
         parts.push(`💰 ${balance}`);
     }
-    const output = parts.join(" ");
+    const output = parts.join(" | ");
     // 始终输出 JSON 格式
     if (output) {
         console.log(JSON.stringify({ label: output }));
