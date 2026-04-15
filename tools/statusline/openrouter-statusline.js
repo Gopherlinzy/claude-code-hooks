@@ -83,7 +83,16 @@ async function getBalance() {
         const remaining = data.data?.limit_remaining || 0;
         const limit = data.data?.limit || 0;
         if (limit > 0) {
-            return `${remaining.toFixed(0)}/${limit.toFixed(0)}`;
+            const percentage = Math.round((remaining / limit) * 100);
+            // 生成进度条（10字符）
+            const filled = Math.round((percentage / 100) * 10);
+            const empty = 10 - filled;
+            let bar = "";
+            for (let i = 0; i < filled; i++)
+                bar += "▓";
+            for (let i = 0; i < empty; i++)
+                bar += "░";
+            return `💰 ${remaining.toFixed(2)}/${limit.toFixed(0)} ${bar} ${percentage}%`;
         }
     }
     catch (e) { }
@@ -138,9 +147,9 @@ async function main() {
     // 尝试获取会话成本
     const sessionData = await tryGetSessionData();
     const sessionCost = sessionData?.sessionCost || "";
-    // 输出格式：成本 | 余额
+    // 输出格式：成本 | 余额（balance 已包含 💰 符号）
     // 不输出模型信息（那是 claude-hud 的职责）
-    const output = `${sessionCost}💰 ${balance}`;
+    const output = `${sessionCost}${balance}`.trim();
     // 输出为 JSON（claude-hud --extra-cmd 需要）
     console.log(JSON.stringify({ label: output.trim() }));
 }
