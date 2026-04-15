@@ -165,9 +165,17 @@ async function main() {
     if (session) {
         parts.push(session);
     }
-    // 添加余额（含百分比和两位小数）
+    // 添加余额（含进度条）
     if (balance) {
-        parts.push(`💰 ${balance.amount} ${balance.percentage}%`);
+        // 生成进度条（10个字符）
+        const filled = Math.round((balance.percentage / 100) * 10);
+        const empty = 10 - filled;
+        let bar = "";
+        for (let i = 0; i < filled; i++)
+            bar += "▓";
+        for (let i = 0; i < empty; i++)
+            bar += "░";
+        parts.push(`💰 ${balance.amount} ${bar} ${balance.percentage}%`);
     }
     const output = parts.join(" | ");
     // 输出 JSON
