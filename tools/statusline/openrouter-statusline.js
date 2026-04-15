@@ -105,14 +105,34 @@ async function getSessionCostFromFile(sessionId) {
         if (!fs.existsSync(sf))
             return null;
         const state = JSON.parse(fs.readFileSync(sf, "utf-8"));
-        if (state.last_provider && state.last_model) {
-            let model = state.last_model.split("/").pop() || state.last_model;
-            model = model.replace(/-\d+$/, "");
-            return `${state.last_provider}: ${model} - $${state.total_cost.toFixed(2)} | `;
+        if (state.total_cost > 0) {
+            return `$${state.total_cost.toFixed(2)}`;
         }
     }
     catch (e) { }
     return null;
+}
+/** 从 claude-hud 写入的临时文件获取当前真实模型（/model 切换后立即更新） */
+function getCurrentModel() {
+    try {
+        const possiblePaths = [process.env.TMPDIR, "/tmp", "/var/tmp"].filter(Boolean);
+        for (const dir of possiblePaths) {
+            const f = path.join(dir, "claude-hud-current-model.json");
+            if (fs.existsSync(f)) {
+                const state = JSON.parse(fs.readFileSync(f, "utf-8"));
+                // 文件超过 60 秒认为过期
+                if (Date.now() - state.updated_at < 60_000)
+                    return state;
+            }
+        }
+    }
+    catch (e) { }
+    return null;
+}
+/** 将 model_id 格式化为可读名称 */
+function formatModelLabel(modelId) {
+    const part = modelId.split("/").pop() || modelId;
+    return part.replace(/-\d{8}$/, "").replace(/-\d+$/, "");
 }
 async function tryGetSessionData() {
     // 尝试从最近的缓存文件获取会话数据
@@ -146,10 +166,24 @@ async function tryGetSessionData() {
         if (!latestFile || !fs.existsSync(latestFile))
             return null;
         const state = JSON.parse(fs.readFileSync(latestFile, "utf-8"));
-        if (state.last_provider && state.last_model) {
-            let model = state.last_model.split("/").pop() || state.last_model;
-            model = model.replace(/-\d+$/, "");
-            const sessionCost = `${state.last_provider}: ${model} - $${state.total_cost.toFixed(2)} | `;
+        if (state.total_cost > 0) {
+            // 优先使用 claude-hud 写入的当前模型（实时感知 /model 切换）
+            const currentModel = getCurrentModel();
+            let providerModel;
+            if (currentModel?.model_id) {
+                providerModel = formatModelLabel(currentModel.model_id);
+            }
+            else if (state.last_provider && state.last_model) {
+                // 降级：使用缓存里的模型（可能是切换前的旧值）
+                const model = formatModelLabel(state.last_model);
+                providerModel = `${state.last_provider}: ${model}`;
+            }
+            else {
+                providerModel = "";
+            }
+            const sessionCost = providerModel
+                ? `${providerModel} - $${state.total_cost.toFixed(2)}`
+                : `$${state.total_cost.toFixed(2)}`;
             return { sessionCost };
         }
     }
@@ -164,11 +198,11 @@ async function main() {
     // 尝试获取会话成本
     const sessionData = await tryGetSessionData();
     const sessionCost = sessionData?.sessionCost || "";
-    // 输出格式：成本 | 余额（balance 已包含 💰 符号）
-    // 不输出模型信息（那是 claude-hud 的职责）
-    const output = `${sessionCost}${balance}`.trim();
+    // 输出格式：成本 | 余额（模型由 claude-hud 显示，这里用实时模型显示成本）
+    const parts = [sessionCost, balance].filter(Boolean);
+    const output = parts.join(" | ");
     // 输出为 JSON（claude-hud --extra-cmd 需要）
-    console.log(JSON.stringify({ label: output.trim() }));
+    console.log(JSON.stringify({ label: output }));
 }
 main().catch(() => {
     process.exit(0);
