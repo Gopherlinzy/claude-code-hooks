@@ -23,6 +23,9 @@ interface CostState {
 interface StdinData {
   session_id?: string;
   transcript_path?: string;
+  model?: { id?: string; display_name?: string };
+  cost?: { total_cost_usd?: number };
+  context_window?: { used_percentage?: number };
   [key: string]: any;
 }
 
@@ -149,24 +152,40 @@ async function getSessionCost(stdinStr: string): Promise<string | null> {
 
 async function main() {
   // 读取 stdin
-  let stdinData = "";
+  let stdinStr = "";
   for await (const chunk of process.stdin) {
-    stdinData += chunk.toString();
+    stdinStr += chunk.toString();
   }
+
+  let stdinData: StdinData | null = null;
+  try {
+    stdinData = JSON.parse(stdinStr);
+  } catch {}
 
   const balance = await getBalance();
-  const session = stdinData ? await getSessionCost(stdinData) : null;
+  const session = stdinData ? await getSessionCost(stdinStr) : null;
 
   // 组建输出
-  let output = "";
-  if (session) {
-    output = session;
-    if (balance) output = `${output} | 💰 ${balance}`;
-  } else if (balance) {
-    output = `💰 ${balance}`;
+  let parts: string[] = [];
+
+  // 优先添加模型信息（从 stdin）
+  if (stdinData?.model?.display_name) {
+    parts.push(`[${stdinData.model.display_name} | OpenRouter]`);
   }
 
-  // 始终输出 JSON（--extra-cmd 需要 JSON 格式）
+  // 添加会话成本
+  if (session) {
+    parts.push(session);
+  }
+
+  // 添加余额
+  if (balance) {
+    parts.push(`💰 ${balance}`);
+  }
+
+  const output = parts.join(" ");
+
+  // 始终输出 JSON 格式
   if (output) {
     console.log(JSON.stringify({ label: output }));
   } else {

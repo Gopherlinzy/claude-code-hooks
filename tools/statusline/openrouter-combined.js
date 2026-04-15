@@ -144,23 +144,33 @@ async function getSessionCost(stdinStr) {
 }
 async function main() {
     // 读取 stdin
-    let stdinData = "";
+    let stdinStr = "";
     for await (const chunk of process.stdin) {
-        stdinData += chunk.toString();
+        stdinStr += chunk.toString();
     }
+    let stdinData = null;
+    try {
+        stdinData = JSON.parse(stdinStr);
+    }
+    catch { }
     const balance = await getBalance();
-    const session = stdinData ? await getSessionCost(stdinData) : null;
+    const session = stdinData ? await getSessionCost(stdinStr) : null;
     // 组建输出
-    let output = "";
+    let parts = [];
+    // 优先添加模型信息（从 stdin）
+    if (stdinData?.model?.display_name) {
+        parts.push(`[${stdinData.model.display_name} | OpenRouter]`);
+    }
+    // 添加会话成本
     if (session) {
-        output = session;
-        if (balance)
-            output = `${output} | 💰 ${balance}`;
+        parts.push(session);
     }
-    else if (balance) {
-        output = `💰 ${balance}`;
+    // 添加余额
+    if (balance) {
+        parts.push(`💰 ${balance}`);
     }
-    // 始终输出 JSON（--extra-cmd 需要 JSON 格式）
+    const output = parts.join(" ");
+    // 始终输出 JSON 格式
     if (output) {
         console.log(JSON.stringify({ label: output }));
     }
