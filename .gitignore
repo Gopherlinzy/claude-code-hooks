@@ -18,6 +18,9 @@ PLAN.md
 .cache/
 .tmp/
 
+# IDE configs (local machine specific)
+.idea/
+
 # Personal Git multi-account configuration (do not commit)
 .git-multi-account
 .git-setup-guide.md
