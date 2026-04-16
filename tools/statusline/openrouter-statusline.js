@@ -199,11 +199,12 @@ async function main() {
     if (!balance) {
         process.exit(0);
     }
-    // 尝试获取会话成本
+    // 尝试获取会话成本，用于显示 provider 和模型信息
     const sessionData = await tryGetSessionData();
-    const sessionCost = sessionData?.sessionCost || "";
-    // 输出格式：成本 | 余额（模型由 claude-hud 显示，这里用实时模型显示成本）
-    const parts = [sessionCost, balance].filter(Boolean);
+    const modelInfo = sessionData ? sessionData.sessionCost.split(" - ")[0] : "";
+
+    // 输出格式：provider: model | 余额（只显示实时的）
+    const parts = [modelInfo, balance].filter(Boolean);
     const output = parts.join(" | ");
     // 输出为 JSON（claude-hud --extra-cmd 需要）
     console.log(JSON.stringify({ label: output }));
