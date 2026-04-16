@@ -400,81 +400,82 @@ PYEOF
 
 ---
 
-## Generation 成本追踪原理
+## Statusline 显示原理
 
-### 数据来源
+### 架构概览
 
-成本数据来自 OpenRouter 的 Generation API：
+statusline 由两部分组成，**model 和 provider 完全解耦**：
 
-```bash
-# 查询单次 generation 的费用
-curl "https://openrouter.ai/api/v1/generation?id=gen-xxxxx" \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY"
-```
+| 信息 | 来源 | 更新時機 |
+|------|------|---------|
+| model 名称 | `claude-hud-current-model.json` | `/model` 切换立即生效 |
+| provider 名称 | OpenRouter generation 接口 + 60s TTL 缓存 | model 变化或缓存超时时拉取 |
+| 余额 / 进度条 | OpenRouter `/api/v1/key` | 每次 statusline 刷新实时拉取 |
 
-响应字段：
-- `data.total_cost` — 本次请求费用（美元）
-- `data.cache_discount` — 缓存折扣
-- `data.provider_name` — 实际提供商（如 `Amazon Bedrock`）
-- `data.model` — 模型 ID（如 `anthropic/claude-haiku-4-5`）
+### 当前模型文件（实时）
 
-### 缓存文件
-
-脚本在 `$TMPDIR` 里维护每个会话的累计成本文件：
-
-```
-$TMPDIR/claude-openrouter-cost-{session_id}.json
-```
-
-文件结构：
-```json
-{
-  "seen_ids": ["gen-abc123", "gen-def456"],
-  "total_cost": 4.78,
-  "total_cache_discount": 0.15,
-  "last_provider": "Amazon Bedrock",
-  "last_model": "anthropic/claude-haiku-4-5-20251001"
-}
-```
-
-**字段说明：**
-- `seen_ids` — 已处理的 generation ID，避免重复查询
-- `total_cost` — 本次会话累计成本
-- `last_provider` / `last_model` — 最后一次 generation 的模型信息（降级用）
-
-### 当前模型文件
-
-claude-hud 补丁会在每次渲染时写入：
+claude-hud 补丁在每次 statusline 渲染时写入：
 
 ```
 $TMPDIR/claude-hud-current-model.json
 ```
 
-文件结构：
 ```json
 {
-  "model_id": "anthropic/claude-sonnet-4-5",
-  "display_name": "Claude Sonnet 4 (1M context)",
+  "model_id": "claude-sonnet-4.6[1m]",
+  "display_name": "Sonnet 4 (1M context)",
   "updated_at": 1749123456789
 }
 ```
 
-**60 秒有效期**。`openrouter-statusline.js` 优先读取此文件，实现 `/model` 切换后立即更新模型名。
+> **注意**：`model_id` 含 ANSI 控制码（`[1m]` 等），脚本会自动清理后显示。`display_name` 在 OpenRouter 路由下不准确，脚本不使用此字段。
 
-### 成本显示逻辑
+### Provider 缓存文件
+
+脚本在 `$TMPDIR` 里读取 session cost 文件获取可用的 generation ID，查询 provider：
 
 ```
-优先：claude-hud-current-model.json（实时当前模型，60s有效）
-  → 显示：claude-sonnet-4-5 - $4.78
-降级：cost 缓存 last_model + last_provider
-  → 显示：Amazon Bedrock: claude-haiku-4-5 - $4.78
-再降级：只有成本无模型
-  → 显示：$4.78
+$TMPDIR/claude-openrouter-cost-{session_id}.json
+```
+
+```json
+{
+  "seen_ids": ["gen-abc123", "gen-def456"],
+  "total_cost": 4.78,
+  "last_provider": "Amazon Bedrock",
+  "last_model": "anthropic/claude-haiku-4-5-20251001",
+  "cached_model_id": "claude-sonnet-4.6[1m]",
+  "last_fetched_at": 1749123456789
+}
+```
+
+**刷新触发条件（任一满足即刷新）：**
+1. `cached_model_id` 与当前 `claude-hud-current-model.json` 的 `model_id` 不同（`/model` 切换）
+2. `last_fetched_at` 不存在（首次运行）
+3. 距 `last_fetched_at` 超过 60 秒（定时刷新）
+
+刷新时调用：
+```bash
+curl "https://openrouter.ai/api/v1/generation?id=<last_gen_id>" \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+只取 `data.provider_name`（不取 `data.model`，model 由 claude-hud 提供）。
+
+### 显示逻辑
+
+```
+model  → claude-hud-current-model.json（清理 ANSI 后直接用）
+         降级：last_model 格式化
+provider → last_provider（generation 接口缓存）
+
+输出：{provider}: {model} | 💰 {remaining}/{limit} {bar} {pct}%
+示例：Amazon Bedrock: claude-sonnet-4.6 | 💰 315.23/500 ▓▓▓▓▓▓░░░░ 63%
 ```
 
 ### 查询余额
 
-余额来自：
+每次刷新实时调用：
 
 ```bash
 curl https://openrouter.ai/api/v1/key \
@@ -485,6 +486,17 @@ curl https://openrouter.ai/api/v1/key \
 - `data.limit_remaining` — 剩余额度
 - `data.limit` — 总额度
 
+### 跨平台说明
+
+| 平台 | statusLine 命令 | 注意事项 |
+|------|----------------|---------|
+| macOS / Linux | `bash ~/.claude/scripts/claude-hooks/statusline/run-hud.sh` | 直接运行 |
+| Windows (Git Bash) | `bash C:/Users/你的用户名/.claude/scripts/claude-hooks/statusline/run-hud.sh` | 路径用原生格式 |
+
+`run-hud.sh` 内部自动检测平台：Windows 下将 `/c/Users/...` 转换为 `C:/Users/...` 后再传给 `--extra-cmd`（`cmd.exe` 不认识 MSYS 路径）。`openrouter-statusline.js` 使用 Node.js 原生 `os.tmpdir()` 和 `process.env.TMPDIR/TMP/TEMP`，三平台均兼容。
+
+> `curl` 在 Windows 10 1803+ 已内置，更早版本需手动安装。
+
 ---
 
 ## 更新
@@ -493,18 +505,22 @@ curl https://openrouter.ai/api/v1/key \
 cd ~/projects/claude-code-hooks  # 或你的本地路径
 git pull
 
-# 同步脚本
+# 同步 hook 脚本
 cp scripts/*.sh ~/.claude/scripts/claude-hooks/
 chmod +x ~/.claude/scripts/claude-hooks/*.sh
 
-# 同步 statusline
+# 同步 statusline 脚本（如果已安装 OpenRouter 状态栏）
 cp tools/statusline/openrouter-statusline.js \
    ~/.claude/scripts/claude-hooks/statusline/
+cp tools/statusline/run-hud.sh \
+   ~/.claude/scripts/claude-hooks/statusline/
+chmod +x ~/.claude/scripts/claude-hooks/statusline/run-hud.sh
 
 echo "✅ 更新完成"
 ```
 
-> 注意：`notify.conf`、`secrets.env`、claude-hud 源码修改**不会被更新命令覆盖**，需要手动处理。
+> 注意：`notify.conf`、`secrets.env` 不会被覆盖。  
+> claude-hud 插件升级到新版本后，需要重新执行「修改 claude-hud 源代码」的两个补丁步骤。
 > claude-hud 插件升级到新版本后，需要重新执行「修改 claude-hud 源代码」两个步骤。
 
 ---

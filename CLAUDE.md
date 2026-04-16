@@ -145,12 +145,15 @@ Full instructions in [INSTALL.md](INSTALL.md#openrouter-状态栏详细配置). 
 /claude-hud:setup
 ```
 
-**Step 2 — Copy statusline script:**
+**Step 2 — Copy statusline scripts:**
 ```bash
 INSTALL_DIR="${HOME}/.claude/scripts/claude-hooks"
 mkdir -p "${INSTALL_DIR}/statusline"
 cp ~/projects/claude-code-hooks/tools/statusline/openrouter-statusline.js \
    "${INSTALL_DIR}/statusline/"
+cp ~/projects/claude-code-hooks/tools/statusline/run-hud.sh \
+   "${INSTALL_DIR}/statusline/"
+chmod +x "${INSTALL_DIR}/statusline/run-hud.sh"
 ```
 
 **Step 3 — Patch claude-hud source (two changes required):**
@@ -190,19 +193,21 @@ console.log('patched');
 PATCH_EOF
 ```
 
-**Step 4 — Set statusLine in settings.json:**
+**Step 4 — Set statusLine in settings.json (cross-platform via run-hud.sh):**
 ```bash
 SETTINGS="${HOME}/.claude/settings.json"
-SCRIPT="${HOME}/.claude/scripts/claude-hooks/statusline/openrouter-statusline.js"
+RUN_HUD="${HOME}/.claude/scripts/claude-hooks/statusline/run-hud.sh"
 python3 -c "
 import json, os
 p = os.path.expanduser('${SETTINGS}')
 d = json.load(open(p))
-d['statusLine'] = {'type':'command','command':\"bash -c 'plugin_dir=\$(ls -d \\\"\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}\\\"/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | sort -V | tail -1) && exec node \\\"\${plugin_dir}dist/index.js\\\" --extra-cmd \\\"node ${SCRIPT}\\\"'\"}
+d['statusLine'] = {'type': 'command', 'command': 'bash ${RUN_HUD}'}
 open(p,'w').write(json.dumps(d,indent=2,ensure_ascii=False)+'\n')
 print('done')
 "
 ```
+
+> `run-hud.sh` handles Windows (Git Bash) path conversion automatically — the same command works on macOS, Linux, and Windows.
 
 **Step 5 — Hide duplicate model label in claude-hud:**
 ```bash
@@ -218,7 +223,7 @@ print('done')
 
 Restart Claude Code for all changes to take effect. Expected statusline:
 ```
-claude-sonnet-4-5 - $4.78 | 💰 334.83/500 ▓▓▓▓▓▓▓░░░ 67%
+Amazon Bedrock: claude-sonnet-4.6 | 💰 334.83/500 ▓▓▓▓▓▓▓░░░ 67%
 ```
 
 ### 5. Verify
@@ -280,7 +285,16 @@ Hook modules are enabled by default. StatusLine is optional (disabled by default
 cd /tmp && git clone https://github.com/Gopherlinzy/claude-code-hooks.git
 cp /tmp/claude-code-hooks/scripts/*.sh ~/.claude/scripts/claude-hooks/
 chmod +x ~/.claude/scripts/claude-hooks/*.sh
+
+# Sync statusline scripts (if OpenRouter statusline is installed)
+cp /tmp/claude-code-hooks/tools/statusline/openrouter-statusline.js \
+   ~/.claude/scripts/claude-hooks/statusline/
+cp /tmp/claude-code-hooks/tools/statusline/run-hud.sh \
+   ~/.claude/scripts/claude-hooks/statusline/
+chmod +x ~/.claude/scripts/claude-hooks/statusline/run-hud.sh
+
 rm -rf /tmp/claude-code-hooks
 ```
 
 Config files (`notify.conf`, `secrets.env`) are never overwritten by updates.
+After claude-hud plugin upgrades to a new version, re-apply the two patches in step 4b (Step 3).
