@@ -26,18 +26,37 @@ You fire up Claude Code, assign it a complex task, and go grab coffee. When you 
 
 ## What's in the Box
 
+### 🔴 Core Hooks (Auto-enabled on install)
+
 | Hook | Trigger | What it actually does |
 |------|---------|----------------------|
 | 🔔 **cc-stop-hook.sh** | Task ends | Pings you on Feishu/Slack/Telegram/etc. No more staring at terminals. |
 | ⏰ **wait-notify.sh** | Needs permission | "Hey, Claude's been waiting for you for 30 seconds..." |
 | 🛑 **cancel-wait.sh** | You respond | Cancels the nag. It knows you're back. |
-| 🛡️ **cc-safety-gate.sh** | Runs bash | Blocks `rm -rf /`, `sudo`, `eval`, pipe-to-shell, and [22 other patterns](#safety-gate-patterns). |
+| 🛡️ **cc-safety-gate.sh** | Runs bash | Blocks `rm -rf /`, `sudo`, `eval`, pipe-to-shell, and 20+ other patterns. |
 | 📏 **guard-large-files.sh** | Reads files | "No, you don't need to read `node_modules/`. Trust me." |
-| 🚀 **dispatch-claude.sh** | You | Spawn isolated sub-tasks with git worktree, progress tracking, the works. |
-| 📊 **check-claude-status.sh** | You | "Is that thing still running?" Quick answer. |
-| 🧹 **reap-orphans.sh** | Cron / manual | Finds zombie Claude processes and puts them down humanely. |
-| 📚 **generate-skill-index.sh** | Lazy | Builds a skill directory so Claude knows what tools it has. |
-| 💰 **[statusline/](tools/statusline/)** | claude-hud display | Real-time OpenRouter credit monitor with visual progress bar. |
+
+### 🟡 Extended Security (Optional - enable via settings.json)
+
+| Hook | Trigger | Function |
+|------|---------|----------|
+| 🔐 **config-change-guard.sh** | Config changes | Prevent accidental settings.json modification |
+| 🛡️ **mcp-guard.sh** | MCP tool calls | Block dangerous MCP operations |
+| 🔍 **injection-scan.sh** | User input | Detect prompt injection patterns |
+| 📁 **project-context-guard.sh** | File writes | Protect critical project files (.env, .git, etc) |
+| 💰 **openrouter-cost-summary.sh** | Task end | Show API costs per session |
+
+### 🟢 Tools & Utilities
+
+| Tool | Trigger | Function |
+|------|---------|----------|
+| 🚀 **dispatch-claude.sh** | Manual | Spawn isolated sub-tasks with git worktree |
+| 📊 **check-claude-status.sh** | Manual | Quick task status check |
+| 🧹 **reap-orphans.sh** | Cron / manual | Clean zombie processes ⚠️ needs cron setup |
+| 📚 **generate-skill-index.sh** | Manual / cron | Build skill directory index |
+| 💰 **[statusline/](tools/statusline/)** | claude-hud | Real-time OpenRouter credit monitor |
+
+**📖 Full script reference:** See [CLAUDE-SCRIPTS-REFERENCE.md](CLAUDE-SCRIPTS-REFERENCE.md)
 
 ## 🎨 Statusline Tools (Optional)
 
@@ -117,7 +136,46 @@ If you want to configure manually, see [tools/statusline/README.md](tools/status
 
 ## Quick Start
 
-### 🤖 Path 0: Let Claude Code Install It For You (Zero CLI Knowledge Required)
+### 🎯 Choose Your Installation Path
+
+#### 🟢 Path 1: Interactive Selection (Recommended)
+**Best for:** Users who want to customize what gets installed  
+**Time:** 5-10 minutes  
+**Difficulty:** ⭐⭐ (interactive prompts)
+
+```bash
+git clone https://github.com/Gopherlinzy/claude-code-hooks.git
+cd claude-code-hooks
+bash install-interactive.sh
+```
+
+This guided installer will:
+- ✅ Detect your OS
+- ✅ Ask which modules you want (core + optional + tools)
+- ✅ Configure settings.json automatically
+- ✅ Verify everything works
+
+Choose from:
+- **Core only** (5 min): Notifications + security
+- **Core + extended** (10 min): Add advanced guards
+- **Core + tools** (10 min): Add task management
+- **Everything** (15 min): Full suite + statusline
+
+---
+
+### ⚡ Path 1b: Quick Install (All Defaults)
+**Best for:** Users who want everything  
+**Time:** 5 minutes
+
+```bash
+bash install.sh 2>/dev/null | grep -E "✓|✗|Error"
+```
+
+Installs everything and configures settings.json.
+
+---
+
+### 🤖 Path 2: Let Claude Code Install It For You (Zero CLI Knowledge Required)
 
 **Best for:** Anyone who prefers to just describe what they want instead of running shell commands  
 **Time:** ~3 minutes  

@@ -1,9 +1,31 @@
 # Claude Code Hooks — Agent Installation Guide
 
 > This file is for Claude Code (the AI agent) to read.
+> **Quick reference for all scripts**: See [CLAUDE-SCRIPTS-REFERENCE.md](CLAUDE-SCRIPTS-REFERENCE.md)
 > If a user asks you to install claude-code-hooks, follow these steps.
 
-## Installation Steps
+## Installation Methods
+
+### ⭐ Recommended: Interactive Installer
+
+```bash
+bash install-interactive.sh
+```
+
+The interactive installer provides:
+- ✅ OS detection
+- ✅ Module selection (core + optional + tools)
+- ✅ Automatic configuration
+- ✅ Installation verification
+
+Select modules based on your needs:
+- **Core hooks (required)**: Notifications, security, permission management
+- **Extended hooks (optional)**: Config protection, MCP safety, prompt injection detection
+- **Tools (optional)**: Task dispatch, process cleanup, skill indexing
+
+---
+
+## Traditional Installation Steps
 
 ### 0. Check if already cloned
 
