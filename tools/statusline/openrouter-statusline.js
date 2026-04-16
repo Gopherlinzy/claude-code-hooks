@@ -1,214 +1,200 @@
 #!/usr/bin/env node
-"use strict";
-/**
- * OpenRouter StatusLine for --extra-cmd
- * 只显示成本 + 余额信息，不显示模型（由 claude-hud 显示）
- * 用于 claude-hud 的 --extra-cmd 参数
- */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
-const child_process = __importStar(require("child_process"));
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// openrouter-statusline.ts
+var fs = __toESM(require("fs"));
+var path = __toESM(require("path"));
+var child_process = __toESM(require("child_process"));
+var os = __toESM(require("os"));
+var OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+var PROVIDER_CACHE_TTL = 6e4;
+var HUD_MODEL_TTL = 12e4;
 if (!OPENROUTER_API_KEY) {
-    // --extra-cmd 模式：无 API Key 时直接退出（不输出，让 claude-hud 输出）
-    process.exit(0);
+  process.exit(0);
 }
-async function fetchWithTimeout(url, headers = {}, timeoutMs = 2000) {
-    return new Promise((resolve) => {
-        const curlArgs = ["curl", "-s", "--max-time", "2", url];
-        for (const [key, val] of Object.entries(headers)) {
-            curlArgs.push("-H", `${key}: ${val}`);
-        }
-        const timeout = setTimeout(() => {
-            process.kill(child.pid);
-            resolve("");
-        }, timeoutMs);
-        const child = child_process.spawn("curl", curlArgs.slice(1));
-        let stdout = "";
-        child.stdout?.on("data", (data) => {
-            stdout += data.toString();
-        });
-        child.on("close", () => {
-            clearTimeout(timeout);
-            resolve(stdout);
-        });
-        child.on("error", () => {
-            clearTimeout(timeout);
-            resolve("");
-        });
+async function fetchWithTimeout(url, headers = {}, timeoutMs = 3e3) {
+  return new Promise((resolve) => {
+    const curlArgs = ["-s", "--max-time", String(Math.ceil(timeoutMs / 1e3)), url];
+    for (const [key, val] of Object.entries(headers)) {
+      curlArgs.push("-H", `${key}: ${val}`);
+    }
+    const timeout = setTimeout(() => {
+      try {
+        process.kill(child.pid);
+      } catch {
+      }
+      resolve("");
+    }, timeoutMs);
+    const child = child_process.spawn("curl", curlArgs);
+    let stdout = "";
+    child.stdout?.on("data", (d) => {
+      stdout += d.toString();
     });
+    child.on("close", () => {
+      clearTimeout(timeout);
+      resolve(stdout);
+    });
+    child.on("error", () => {
+      clearTimeout(timeout);
+      resolve("");
+    });
+  });
+}
+function formatModelLabel(modelId) {
+  const part = modelId.split("/").pop() || modelId;
+  return part.replace(/-\d{8}$/, "").replace(/-\d+$/, "");
+}
+function getHudModelState() {
+  const dirs = [process.env.TMPDIR, os.tmpdir(), "/tmp", "/var/tmp"].filter(Boolean);
+  for (const dir of dirs) {
+    try {
+      const f = path.join(dir, "claude-hud-current-model.json");
+      if (!fs.existsSync(f)) continue;
+      const state = JSON.parse(fs.readFileSync(f, "utf-8"));
+      if (Date.now() - state.updated_at < HUD_MODEL_TTL) return state;
+    } catch {
+    }
+  }
+  return null;
+}
+function findLatestCostFile() {
+  const dirs = [
+    process.env.TMPDIR,
+    process.env.TMP,
+    process.env.TEMP,
+    os.tmpdir(),
+    "/tmp",
+    "/var/tmp"
+  ].filter(Boolean);
+  let latestFile = "";
+  let latestTime = 0;
+  for (const dir of dirs) {
+    try {
+      const entries = fs.readdirSync(dir);
+      for (const entry of entries) {
+        if (!entry.startsWith("claude-openrouter-cost-") || !entry.endsWith(".json")) continue;
+        const full = path.join(dir, entry);
+        const stat = fs.statSync(full);
+        if (stat.mtimeMs > latestTime) {
+          latestTime = stat.mtimeMs;
+          latestFile = full;
+        }
+      }
+    } catch {
+    }
+  }
+  if (!latestFile) return null;
+  try {
+    const state = JSON.parse(fs.readFileSync(latestFile, "utf-8"));
+    return { file: latestFile, state };
+  } catch {
+    return null;
+  }
+}
+async function fetchLatestGeneration(seen_ids) {
+  if (!seen_ids || seen_ids.length === 0) return null;
+  const genId = seen_ids[seen_ids.length - 1];
+  try {
+    const resp = await fetchWithTimeout(
+      `https://openrouter.ai/api/v1/generation?id=${genId}`,
+      { Authorization: `Bearer ${OPENROUTER_API_KEY}` },
+      3e3
+    );
+    if (!resp) return null;
+    const data = JSON.parse(resp);
+    const gen = data?.data;
+    if (!gen) return null;
+    const provider = gen.provider_name || gen.provider_responses?.[0]?.provider_name || "";
+    const model = gen.model || "";
+    if (!provider && !model) return null;
+    return { provider_name: provider, model };
+  } catch {
+    return null;
+  }
+}
+function needsRefresh(state, currentModelId) {
+  if (currentModelId && state.cached_model_id !== void 0) {
+    const cleanCurrent = currentModelId.replace(/\x1B\[[0-9;]*m/g, "").trim();
+    const cleanCached = state.cached_model_id.replace(/\x1B\[[0-9;]*m/g, "").trim();
+    if (cleanCurrent !== cleanCached) return true;
+  }
+  if (!state.last_fetched_at) return true;
+  if (Date.now() - state.last_fetched_at > PROVIDER_CACHE_TTL) return true;
+  return false;
 }
 async function getBalance() {
-    try {
-        const resp = await fetchWithTimeout("https://openrouter.ai/api/v1/key", {
-            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        });
-        if (!resp)
-            return null;
-        const data = JSON.parse(resp);
-        const remaining = data.data?.limit_remaining || 0;
-        const limit = data.data?.limit || 0;
-        if (limit > 0) {
-            const percentage = Math.round((remaining / limit) * 100);
-            // 生成进度条（10字符）
-            const filled = Math.round((percentage / 100) * 10);
-            const empty = 10 - filled;
-            let bar = "";
-            for (let i = 0; i < filled; i++)
-                bar += "▓";
-            for (let i = 0; i < empty; i++)
-                bar += "░";
-            return `💰 ${remaining.toFixed(2)}/${limit.toFixed(0)} ${bar} ${percentage}%`;
-        }
+  try {
+    const resp = await fetchWithTimeout(
+      "https://openrouter.ai/api/v1/key",
+      { Authorization: `Bearer ${OPENROUTER_API_KEY}` },
+      3e3
+    );
+    if (!resp) return null;
+    const data = JSON.parse(resp);
+    const remaining = data.data?.limit_remaining || 0;
+    const limit = data.data?.limit || 0;
+    if (limit > 0) {
+      const pct = Math.round(remaining / limit * 100);
+      const filled = Math.round(pct / 100 * 10);
+      const bar = "\u2593".repeat(filled) + "\u2591".repeat(10 - filled);
+      return `\u{1F4B0} ${remaining.toFixed(2)}/${limit.toFixed(0)} ${bar} ${pct}%`;
     }
-    catch (e) { }
-    return null;
-}
-async function getSessionCostFromFile(sessionId) {
-    try {
-        const tmpdir = process.env.TMPDIR || "/tmp";
-        const sf = path.join(tmpdir, `claude-openrouter-cost-${sessionId}.json`);
-        if (!fs.existsSync(sf))
-            return null;
-        const state = JSON.parse(fs.readFileSync(sf, "utf-8"));
-        if (state.total_cost > 0) {
-            return `$${state.total_cost.toFixed(2)}`;
-        }
-    }
-    catch (e) { }
-    return null;
-}
-/** 从 claude-hud 写入的临时文件获取当前真实模型（/model 切换后立即更新） */
-function getCurrentModel() {
-    try {
-        const possiblePaths = [process.env.TMPDIR, "/tmp", "/var/tmp"].filter(Boolean);
-        for (const dir of possiblePaths) {
-            const f = path.join(dir, "claude-hud-current-model.json");
-            if (fs.existsSync(f)) {
-                const state = JSON.parse(fs.readFileSync(f, "utf-8"));
-                // 文件超过 60 秒认为过期
-                if (Date.now() - state.updated_at < 60_000)
-                    return state;
-            }
-        }
-    }
-    catch (e) { }
-    return null;
-}
-/** 将 model_id 格式化为可读名称 */
-function formatModelLabel(modelId) {
-    const part = modelId.split("/").pop() || modelId;
-    return part.replace(/-\d{8}$/, "").replace(/-\d+$/, "");
-}
-async function tryGetSessionData() {
-    // 尝试从最近的缓存文件获取会话数据
-    try {
-        const { execSync } = require("child_process");
-        // 尝试多个 TMPDIR 位置
-        const possibleTmpdirs = [
-            process.env.TMPDIR,
-            process.env.TMP,
-            process.env.TEMP,
-            "/tmp",
-            "/var/tmp",
-        ].filter(Boolean);
-        let latestFile = null;
-        let latestTime = 0;
-        for (const tmpdir of possibleTmpdirs) {
-            try {
-                const files = execSync(`find ${tmpdir} -maxdepth 1 -name 'claude-openrouter-cost-*.json' -type f 2>/dev/null | head -50`, {
-                    encoding: "utf-8",
-                }).trim().split("\n").filter((f) => f);
-                for (const file of files) {
-                    const stat = fs.statSync(file);
-                    if (stat.mtimeMs > latestTime) {
-                        latestTime = stat.mtimeMs;
-                        latestFile = file;
-                    }
-                }
-            }
-            catch (e) { }
-        }
-        if (!latestFile || !fs.existsSync(latestFile))
-            return null;
-        const state = JSON.parse(fs.readFileSync(latestFile, "utf-8"));
-        if (state.total_cost > 0) {
-            // 优先使用 claude-hud 写入的当前模型（实时感知 /model 切换）
-            const currentModel = getCurrentModel();
-            let providerModel;
-            if (currentModel?.model_id) {
-                // 模型名用实时的，provider 仍从 generation 缓存取
-                const modelLabel = formatModelLabel(currentModel.model_id);
-                providerModel = state.last_provider
-                    ? `${state.last_provider}: ${modelLabel}`
-                    : modelLabel;
-            }
-            else if (state.last_provider && state.last_model) {
-                // 降级：两者都用缓存（切换模型后下一次 generation 才更新）
-                const model = formatModelLabel(state.last_model);
-                providerModel = `${state.last_provider}: ${model}`;
-            }
-            else {
-                providerModel = "";
-            }
-            const sessionCost = providerModel
-                ? `${providerModel} - $${state.total_cost.toFixed(2)}`
-                : `$${state.total_cost.toFixed(2)}`;
-            return { sessionCost };
-        }
-    }
-    catch (e) { }
-    return null;
+  } catch {
+  }
+  return null;
 }
 async function main() {
-    const balance = await getBalance();
-    if (!balance) {
-        process.exit(0);
+  const [balance, costResult] = await Promise.all([
+    getBalance(),
+    (async () => findLatestCostFile())()
+  ]);
+  if (!balance) process.exit(0);
+  let providerModel = "";
+  if (costResult) {
+    const { file, state } = costResult;
+    const hudModel = getHudModelState();
+    const currentModelId = hudModel?.model_id;
+    if (needsRefresh(state, currentModelId)) {
+      const gen = await fetchLatestGeneration(state.seen_ids);
+      if (gen) {
+        state.last_provider = gen.provider_name;
+        state.last_model = gen.model;
+        state.cached_model_id = currentModelId ?? state.cached_model_id ?? "";
+        state.last_fetched_at = Date.now();
+        try {
+          fs.writeFileSync(file, JSON.stringify(state, null, 2), "utf-8");
+        } catch {
+        }
+      }
     }
-    // 尝试获取会话成本，用于显示 provider 和模型信息
-    const sessionData = await tryGetSessionData();
-    const modelInfo = sessionData ? sessionData.sessionCost.split(" - ")[0] : "";
-
-    // 输出格式：provider: model | 余额（只显示实时的）
-    const parts = [modelInfo, balance].filter(Boolean);
-    const output = parts.join(" | ");
-    // 输出为 JSON（claude-hud --extra-cmd 需要）
-    console.log(JSON.stringify({ label: output }));
+    const provider = state.last_provider || "";
+    const model = state.last_model ? formatModelLabel(state.last_model) : "";
+    if (provider && model) providerModel = `${provider}: ${model}`;
+    else if (model) providerModel = model;
+    else if (provider) providerModel = provider;
+  }
+  const parts = [providerModel, balance].filter(Boolean);
+  console.log(JSON.stringify({ label: parts.join(" | ") }));
 }
-main().catch(() => {
-    process.exit(0);
-});
+main().catch(() => process.exit(0));
