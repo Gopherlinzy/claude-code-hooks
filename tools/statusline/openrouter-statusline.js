@@ -27,12 +27,68 @@ var fs = __toESM(require("fs"));
 var path = __toESM(require("path"));
 var child_process = __toESM(require("child_process"));
 var os = __toESM(require("os"));
-var OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+// 动态读取 token：先尝试从最新的 settings.json 中读取
+function getLatestToken() {
+  const settingsPath = process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, "settings.json") : path.join(os.homedir(), ".claude", "settings.json");
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+      if (settings.env && settings.env.ANTHROPIC_AUTH_TOKEN) {
+        return settings.env.ANTHROPIC_AUTH_TOKEN;
+      }
+    }
+  } catch {}
+  // Fallback 到环境变量
+  return process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+}
+
+var OPENROUTER_API_KEY = getLatestToken();
 var PROVIDER_CACHE_TTL = 6e4;
 var HUD_MODEL_TTL = 12e4;
 if (!OPENROUTER_API_KEY) {
   process.exit(0);
 }
+
+// ===== Token 变更检测：自动清除旧缓存 =====
+(function() {
+  const tmpDir = process.env.TMPDIR || os.tmpdir();
+  const tokenHashFile = path.join(tmpDir, "claude-openrouter-token-hash.json");
+  const tokenHash = OPENROUTER_API_KEY.substring(0, 16).toLowerCase();
+
+  let lastHash = null;
+  try {
+    if (fs.existsSync(tokenHashFile)) {
+      const cached = JSON.parse(fs.readFileSync(tokenHashFile, "utf-8"));
+      lastHash = cached.hash;
+    }
+  } catch {}
+
+  if (lastHash && lastHash !== tokenHash) {
+    try {
+      for (const file of fs.readdirSync(tmpDir)) {
+        // token 变更时只清 provider 缓存，保留 cost 文件（含 seen_ids/last_model）
+        if ((file.startsWith("claude-openrouter-") || file.startsWith("claude-hud-")) && !file.includes("token-hash") && !file.startsWith("claude-openrouter-cost-")) {
+          fs.unlinkSync(path.join(tmpDir, file));
+        }
+      }
+      // 重置 cost 文件中的 provider 缓存字段，避免显示旧 token 的 provider
+      for (const file of fs.readdirSync(tmpDir)) {
+        if (!file.startsWith("claude-openrouter-cost-") || !file.endsWith(".json")) continue;
+        const full = path.join(tmpDir, file);
+        try {
+          const state = JSON.parse(fs.readFileSync(full, "utf-8"));
+          state.last_provider = "";
+          state.last_fetched_at = 0;
+          fs.writeFileSync(full, JSON.stringify(state, null, 2), "utf-8");
+        } catch {}
+      }
+    } catch {}
+  }
+
+  try {
+    fs.writeFileSync(tokenHashFile, JSON.stringify({ hash: tokenHash, ts: Date.now() }));
+  } catch {}
+})();
 async function fetchWithTimeout(url, headers = {}, timeoutMs = 3e3) {
   return new Promise((resolve) => {
     const curlArgs = ["-s", "--max-time", String(Math.ceil(timeoutMs / 1e3)), url];
