@@ -6,8 +6,6 @@ version: 1.0.1
 
 # 🦞 Claude Code Hooks
 
-[中文文档 / Chinese Documentation](https://github.com/Gopherlinzy/claude-code-hooks/blob/main/README_CN.md)
-
 > "I gave Claude Code `sudo` access once. Once."
 
 A battle-tested collection of [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) that adds guardrails, notifications, and sanity to your AI coding assistant — so you can walk away from the terminal without walking into disaster.
